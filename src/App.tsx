@@ -36,7 +36,7 @@ function EquipmentIcon({ category }: { category: string }) {
   if (category === '麦克风') return <svg viewBox="0 0 80 64" aria-hidden="true"><rect x="29" y="8" width="22" height="32" rx="11" /><path d="M21 29v2a19 19 0 0 0 38 0v-2M40 50v8M29 58h22" /></svg>
   if (['存储卡', 'SD卡', 'SD 卡', '内存卡'].includes(category)) return <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M19 7h24l9 9v41H19V7Z" /><path d="M27 7v12M35 7v12M43 7v12M25 31h21M25 40h21" /></svg>
   if (category === '提词器') return <svg viewBox="0 0 80 64" aria-hidden="true"><rect x="14" y="9" width="52" height="37" rx="3" /><path d="M27 20h26M27 28h18M27 36h23M40 46v10M27 56h26" /></svg>
-  if (category === '三脚架') return <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M25 10h14v11H25zM32 21v14M32 35 15 57M32 35l17 22M20 57h29" /><circle cx="32" cy="35" r="3" /></svg>
+  if (category === '三脚架') return <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M24 14h16M32 14v7M32 27v12M32 39 16 57M32 39v18M32 39l16 18" /><circle cx="32" cy="24" r="3" /></svg>
   if (category === '电池') return <svg viewBox="0 0 80 64" aria-hidden="true"><rect x="12" y="16" width="54" height="32" rx="3" /><path d="M66 26h5v12h-5M24 32h18M33 23v18" /></svg>
   if (category === '滤镜') return <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="22" /><circle cx="32" cy="32" r="14" /><path d="m16.5 16.5 31 31" /></svg>
   if (['监看器', '显示器', '监视器'].includes(category)) return <svg viewBox="0 0 80 64" aria-hidden="true"><rect x="11" y="10" width="58" height="37" rx="3" /><path d="M40 47v9M26 56h28M19 19h42" /></svg>
