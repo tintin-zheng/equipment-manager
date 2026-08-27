@@ -3,7 +3,15 @@ import { getPool, sql } from './database.js'
 
 const json = (body: unknown, status = 200): HttpResponseInit => ({ status, jsonBody: body })
 const badRequest = (message: string) => json({ message }, 400)
-const serverError = (context: InvocationContext, error: unknown) => { context.error(error); return json({ message: '服务器暂时无法处理请求' }, 500) }
+// 对客户端只返回安全的故障类别，绝不回传连接字符串、密码或 SQL 细节。
+const serverError = (context: InvocationContext, error: unknown) => {
+  context.error(error)
+  const detail = error instanceof Error ? error.message : ''
+  if (detail.includes('SQL_CONNECTION_STRING')) return json({ message: '数据库连接配置缺失' }, 500)
+  if (/login failed|authentication failed/i.test(detail)) return json({ message: '数据库账号或密码无法验证' }, 500)
+  if (/firewall|not allowed to access|cannot open server|timeout|connect/i.test(detail)) return json({ message: '数据库网络连接被拒绝或超时' }, 500)
+  return json({ message: '服务器暂时无法处理请求' }, 500)
+}
 
 app.http('members', { methods: ['GET', 'POST'], authLevel: 'anonymous', route: 'members', handler: async (request, context) => { try { const db = await getPool(); if (request.method === 'GET') { const result = await db.request().query('SELECT id, name FROM members ORDER BY id'); return json(result.recordset) } const { name } = await request.json() as { name?: string }; const trimmed = name?.trim(); if (!trimmed || trimmed.length > 100) return badRequest('名字必须介于 1 至 100 个字符之间'); try { const result = await db.request().input('name', sql.NVarChar(100), trimmed).query('INSERT INTO members (name) OUTPUT INSERTED.id, INSERTED.name VALUES (@name)'); return json(result.recordset[0], 201) } catch (error) { if (error instanceof sql.RequestError && error.number === 2627) { const existing = await db.request().input('name', sql.NVarChar(100), trimmed).query('SELECT id, name FROM members WHERE name=@name'); return json(existing.recordset[0]) } throw error } } catch (error) { return serverError(context, error) } } })
 
