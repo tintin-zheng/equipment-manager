@@ -32,7 +32,7 @@ function IdentityPicker({ onRegistered }: { onRegistered: (member: Member) => vo
 }
 function EquipmentIcon({ category }: { category: string }) {
   if (category === '相机') return <svg viewBox="0 0 80 64" aria-hidden="true"><path d="M16 18h13l5-8h12l5 8h13c5 0 8 3 8 8v24c0 5-3 8-8 8H16c-5 0-8-3-8-8V26c0-5 3-8 8-8Z" /><circle cx="40" cy="38" r="13" /><path d="M61 28h1" /></svg>
-  if (category === '镜头') return <svg viewBox="0 0 80 64" aria-hidden="true"><path d="M22 12h36l9 10v20l-9 10H22l-9-10V22l9-10Z" /><path d="M22 12v40M58 12v40" /><ellipse cx="40" cy="32" rx="16" ry="20" /><ellipse cx="40" cy="32" rx="9" ry="13" /></svg>
+  if (category === '镜头') return <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="23" /><path d="m37.4 22.7 13.2 22.9M26.6 22.7H53M21.3 32l13.2-22.9M26.6 41.3 13.4 18.4M37.4 41.3H11M42.7 32 29.5 54.9" /></svg>
   if (category === '麦克风') return <svg viewBox="0 0 80 64" aria-hidden="true"><rect x="29" y="8" width="22" height="32" rx="11" /><path d="M21 29v2a19 19 0 0 0 38 0v-2M40 50v8M29 58h22" /></svg>
   return <svg viewBox="0 0 80 64" aria-hidden="true"><rect x="12" y="16" width="56" height="34" rx="3" /><path d="M12 26h56M28 16v34" /></svg>
 }
