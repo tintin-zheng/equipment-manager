@@ -5,6 +5,8 @@ import './App.css'
 
 type View = 'all' | 'available' | 'borrowed' | 'mine' | 'history'
 const views: { key: View; label: string }[] = [{ key: 'all', label: '全部器材' }, { key: 'available', label: '可借' }, { key: 'borrowed', label: '已借出' }, { key: 'mine', label: '我的借用' }, { key: 'history', label: '借还记录' }]
+const categoryOrder = ['相机', '镜头', '麦克风', '存储卡', '提词器', '三脚架', '电池', '滤镜', '监看器', '读卡器', '其他']
+const categoryRank = (category: string) => { const index = categoryOrder.indexOf(category); return index < 0 ? categoryOrder.length : index }
 const formatTime = (value: string) => new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 
 function App() {
@@ -15,7 +17,7 @@ function App() {
   useEffect(() => { void loadData() }, [])
   // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
   useEffect(() => { if (currentUser) void loadData(currentUser) }, [view])
-  const displayed = useMemo(() => equipment.filter((item) => view === 'available' ? item.status === 'available' : view === 'borrowed' ? item.status === 'borrowed' : true), [equipment, view])
+  const displayed = useMemo(() => equipment.filter((item) => view === 'available' ? item.status === 'available' : view === 'borrowed' ? item.status === 'borrowed' : true).sort((a, b) => view === 'mine' ? 0 : categoryRank(a.category) - categoryRank(b.category) || a.name.localeCompare(b.name, 'zh-CN')), [equipment, view])
   function message(value: string) { setNotice(value); window.setTimeout(() => setNotice(''), 3200) }
   function chooseUser(member: Member) { localStorage.setItem('currentUserId', String(member.id)); localStorage.setItem('currentUserName', member.name); setCurrentUser(member); message(`你好，${member.name}！`) }
   function switchUser() { localStorage.removeItem('currentUserId'); localStorage.removeItem('currentUserName'); setCurrentUser(null); setView('all'); setManaging(false) }
