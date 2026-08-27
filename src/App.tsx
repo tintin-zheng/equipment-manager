@@ -38,7 +38,7 @@ function EquipmentIcon({ category }: { category: string }) {
   if (category === '提词器') return <svg viewBox="0 0 80 64" aria-hidden="true"><path d="M8 29h17v13H8zM4 33h4M25 25l12-12h20l14 29H35L25 25Z" /><path d="m38 18 15 0 10 20H42L38 18Z" /><path d="M43 42v9M30 51h29" /></svg>
   if (category === '三脚架') return <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M24 14h16M32 14v7M32 27v12M32 39 16 57M32 39v18M32 39l16 18" /><circle cx="32" cy="24" r="3" /></svg>
   if (category === '电池') return <svg viewBox="0 0 80 64" aria-hidden="true"><rect x="12" y="16" width="54" height="32" rx="4" /><path d="M66 26h5v12h-5M24 25v14M34 25v14M44 25v14M54 25v14" /></svg>
-  if (category === '滤镜') return <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="22" /><circle cx="32" cy="32" r="14" /></svg>
+  if (category === '滤镜') return <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="22" /><circle cx="32" cy="32" r="18" /></svg>
   if (['监看器', '显示器', '监视器'].includes(category)) return <svg viewBox="0 0 80 64" aria-hidden="true"><rect x="11" y="10" width="58" height="37" rx="3" /><path d="M40 47v9M26 56h28M19 19h42" /></svg>
   if (category === '读卡器') return <svg viewBox="0 0 80 64" aria-hidden="true"><rect x="14" y="15" width="52" height="35" rx="5" /><path d="M28 15v14h24V15M28 38h24" /></svg>
   return <svg viewBox="0 0 80 64" aria-hidden="true"><rect x="12" y="16" width="56" height="34" rx="3" /><path d="M12 26h56M28 16v34" /></svg>
