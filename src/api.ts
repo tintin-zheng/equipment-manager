@@ -1,4 +1,4 @@
-import { borrow, createEquipment, listEquipment, listMembers, listMyBorrowings, registerMember, returnBorrow } from './mockApi'
+import { borrow, createEquipment, deleteEquipment as deleteMockEquipment, listEquipment, listMembers, listMyBorrowings, registerMember, returnBorrow } from './mockApi'
 import type { Equipment, Member } from './types'
 // 部署后设 VITE_USE_MOCK_API=false，即改为请求 Azure Functions 的 /api 路由。
 const useMockApi = import.meta.env.VITE_USE_MOCK_API !== 'false'
@@ -7,6 +7,7 @@ export const getMembers = (): Promise<Member[]> => useMockApi ? listMembers() : 
 export const createMember = (name: string): Promise<Member> => useMockApi ? registerMember(name) : request('/members', { method: 'POST', body: JSON.stringify({ name }) })
 export const getEquipment = (): Promise<Equipment[]> => useMockApi ? listEquipment() : request('/equipment')
 export const addEquipment = (input: Pick<Equipment, 'name' | 'category' | 'description' | 'imageUrl'>): Promise<Equipment> => useMockApi ? createEquipment(input) : request('/equipment', { method: 'POST', body: JSON.stringify(input) })
+export const deleteEquipment = (id: number): Promise<void> => useMockApi ? deleteMockEquipment(id) : request(`/equipment/${id}`, { method: 'DELETE' })
 export const getMyBorrowings = (memberId: number): Promise<Equipment[]> => useMockApi ? listMyBorrowings(memberId) : request(`/borrow-records?memberId=${memberId}&active=true`)
 export const borrowEquipment = (equipmentId: number, memberId: number) => useMockApi ? borrow(equipmentId, memberId) : request('/borrow', { method: 'POST', body: JSON.stringify({ equipmentId, memberId }) })
 export const returnEquipment = (borrowRecordId: number, memberId: number) => useMockApi ? returnBorrow(borrowRecordId, memberId) : request('/return', { method: 'POST', body: JSON.stringify({ borrowRecordId, memberId }) })

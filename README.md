@@ -36,6 +36,8 @@ func start
 
 先在 Azure SQL Database 的查询编辑器执行 `database/schema.sql`。借出接口会在事务内执行 `UPDATE equipment ... WHERE status='available'`；行锁、可用状态条件和活动借用记录的唯一索引共同避免同一器材被重复借出。
 
+管理模式的删除接口为 `DELETE /api/equipment/:id`。为了保留借还历史，只有从未借出且当前可借的器材可以删除；借出中或已有借还记录的器材会被拒绝删除。
+
 ## 部署到 Azure
 
 1. 创建 Azure SQL Database（小型/免费额度优先），执行 `database/schema.sql`。
