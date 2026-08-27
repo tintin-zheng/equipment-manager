@@ -14,6 +14,7 @@ nav { display:flex; gap:4px; margin:20px 0 29px; padding-bottom:10px; border-bot
 nav button { border:0; border-radius:4px; padding:7px 10px; color:#787774; background:transparent; font-size:13px; transition:background .15s,color .15s; }
 nav button:hover { color:#37352f; background:#f1f1ef; }
 nav button.selected { color:#fff; background:#37352f; font-weight:500; }
+.category-filters { display:flex; gap:6px; margin:-14px 0 24px; }.category-filters button { border:1px solid #e9e9e7; border-radius:999px; padding:5px 10px; color:#787774; background:#fff; font-size:12px; }.category-filters button:hover { color:#37352f; background:#f7f7f5; }.category-filters button.selected { border-color:#37352f; color:#fff; background:#37352f; }
 .summary { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; color:#37352f; font-size:15px; font-weight:600; }
 .summary strong { padding:3px 7px; border-radius:4px; color:#787774; background:#f1f1ef; font:500 11px 'DM Mono',monospace; }
 .equipment-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); border:1px solid #e9e9e7; border-bottom:0; }
