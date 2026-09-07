@@ -9,7 +9,8 @@ CREATE TABLE tasks (
   note NVARCHAR(1000) NULL,
   created_by_member_id INT NULL FOREIGN KEY REFERENCES members(id),
   created_at DATETIME2 NOT NULL,
-  updated_at DATETIME2 NOT NULL
+  updated_at DATETIME2 NOT NULL,
+  archived_at DATETIME2 NULL
 );
 
 CREATE TABLE task_participants (
