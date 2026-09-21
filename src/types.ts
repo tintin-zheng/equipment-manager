@@ -1,8 +1,9 @@
 export type EquipmentStatus = 'available' | 'borrowed'
 export type Member = { id: number; name: string }
 export type BorrowRecord = { id: number; equipmentId: number; equipmentName?: string; equipmentCategory?: string; memberId: number; memberName: string; borrowTime: string; returnTime: string | null; kitBorrowRecordId?: number | null }
-export type Equipment = { id: number; name: string; category: string; status: EquipmentStatus; imageUrl?: string | null; description?: string | null; activeBorrow?: BorrowRecord | null }
-export type KitItem = { equipmentId: number; equipmentName: string; equipmentCategory: string; status: EquipmentStatus }
+export type Equipment = { id: number; name: string; category: string; status: EquipmentStatus; quantity: number; availableQuantity: number; activeBorrowCount: number; imageUrl?: string | null; description?: string | null; activeBorrow?: BorrowRecord | null; activeBorrows?: BorrowRecord[] }
+export type EquipmentInput = Pick<Equipment, 'name' | 'category' | 'description' | 'imageUrl' | 'quantity'>
+export type KitItem = { equipmentId: number; equipmentName: string; equipmentCategory: string; status: EquipmentStatus; quantity: number; availableQuantity: number }
 export type KitBorrowRecord = { id: number; kitId: number; memberId: number; memberName: string; borrowTime: string; returnTime: string | null }
 export type Kit = { id: number; name: string; description: string | null; items: KitItem[]; activeBorrow: KitBorrowRecord | null }
 export type KitInput = { name: string; description: string; equipmentIds: number[] }

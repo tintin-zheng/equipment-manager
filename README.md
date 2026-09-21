@@ -18,6 +18,7 @@ src/mockApi.ts       第一阶段的内存模拟数据
 src/types.ts         前后端共享的数据形状
 api/                 Azure Functions（Phase 2）
 database/schema.sql  Azure SQL 表、约束和种子数据
+database/equipment-quantity.sql  已部署数据库的库存数量升级脚本
 ```
 
 ## 切换至真实 Azure Functions
@@ -34,7 +35,7 @@ npm run build
 func start
 ```
 
-先在 Azure SQL Database 的查询编辑器执行 `database/schema.sql`。借出接口会在事务内执行 `UPDATE equipment ... WHERE status='available'`；行锁、可用状态条件和活动借用记录的唯一索引共同避免同一器材被重复借出。
+全新数据库先在 Azure SQL Database 的查询编辑器执行 `database/schema.sql`。已经运行中的数据库不要重新执行初始化脚本，只需执行一次 `database/equipment-quantity.sql` 来增加库存数量。借出接口会在事务内锁定器材并重新统计当前借出数量，只有库存仍有剩余时才会创建记录，从而避免多人同时借出超过库存。
 
 管理模式的删除接口为 `DELETE /api/equipment/:id`。为了保留借还历史，只有从未借出且当前可借的器材可以删除；借出中或已有借还记录的器材会被拒绝删除。
 

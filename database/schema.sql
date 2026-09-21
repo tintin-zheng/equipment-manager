@@ -1,8 +1,8 @@
 -- ZJE-Lens Azure SQL 初始化脚本。请在 Azure Portal 的 SQL 查询编辑器中执行一次。
 CREATE TABLE members (id INT IDENTITY(1,1) PRIMARY KEY, name NVARCHAR(100) NOT NULL UNIQUE);
-CREATE TABLE equipment (id INT IDENTITY(1,1) PRIMARY KEY, name NVARCHAR(200) NOT NULL, category NVARCHAR(100) NOT NULL CONSTRAINT DF_equipment_category DEFAULT N'其他', status VARCHAR(20) NOT NULL CONSTRAINT CK_equipment_status CHECK (status IN ('available','borrowed')), image_url NVARCHAR(500) NULL, description NVARCHAR(500) NULL);
+CREATE TABLE equipment (id INT IDENTITY(1,1) PRIMARY KEY, name NVARCHAR(200) NOT NULL, category NVARCHAR(100) NOT NULL CONSTRAINT DF_equipment_category DEFAULT N'其他', status VARCHAR(20) NOT NULL CONSTRAINT CK_equipment_status CHECK (status IN ('available','borrowed')), quantity INT NOT NULL CONSTRAINT DF_equipment_quantity DEFAULT 1 CONSTRAINT CK_equipment_quantity CHECK (quantity >= 1), image_url NVARCHAR(500) NULL, description NVARCHAR(500) NULL);
 CREATE TABLE borrow_records (id INT IDENTITY(1,1) PRIMARY KEY, equipment_id INT NOT NULL FOREIGN KEY REFERENCES equipment(id), member_id INT NOT NULL FOREIGN KEY REFERENCES members(id), borrow_time DATETIME2 NOT NULL, return_time DATETIME2 NULL);
-CREATE UNIQUE INDEX UX_borrow_records_active_equipment ON borrow_records(equipment_id) WHERE return_time IS NULL;
+CREATE INDEX IX_borrow_records_active_equipment ON borrow_records(equipment_id) WHERE return_time IS NULL;
 CREATE TABLE tasks (id INT IDENTITY(1,1) PRIMARY KEY, title NVARCHAR(200) NOT NULL, task_time DATETIME2 NULL, location NVARCHAR(200) NULL, note NVARCHAR(1000) NULL, created_by_member_id INT NULL FOREIGN KEY REFERENCES members(id), created_at DATETIME2 NOT NULL, updated_at DATETIME2 NOT NULL, archived_at DATETIME2 NULL);
 CREATE TABLE task_participants (task_id INT NOT NULL FOREIGN KEY REFERENCES tasks(id), member_id INT NOT NULL FOREIGN KEY REFERENCES members(id), joined_at DATETIME2 NOT NULL, CONSTRAINT PK_task_participants PRIMARY KEY (task_id, member_id));
 CREATE INDEX IX_tasks_time ON tasks(task_time);
