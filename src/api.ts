@@ -1,4 +1,4 @@
-import { archiveTask as archiveMockTask, borrow, borrowKit as borrowMockKit, createEquipment, createKit as createMockKit, createTask as createMockTask, deleteEquipment as deleteMockEquipment, deleteTask as deleteMockTask, joinTask as joinMockTask, leaveTask as leaveMockTask, listBorrowHistory, listEquipment, listKits as listMockKits, listMembers, listMyBorrowings, listTasks as listMockTasks, registerMember, returnBorrow, returnKit as returnMockKit, updateEquipment as updateMockEquipment, updateTask as updateMockTask } from './mockApi'
+import { archiveTask as archiveMockTask, borrow, borrowKit as borrowMockKit, createEquipment, createKit as createMockKit, createTask as createMockTask, deleteEquipment as deleteMockEquipment, deleteKit as deleteMockKit, deleteTask as deleteMockTask, joinTask as joinMockTask, leaveTask as leaveMockTask, listBorrowHistory, listEquipment, listKits as listMockKits, listMembers, listMyBorrowings, listTasks as listMockTasks, registerMember, returnBorrow, returnKit as returnMockKit, updateEquipment as updateMockEquipment, updateKit as updateMockKit, updateTask as updateMockTask } from './mockApi'
 import type { BorrowRecord, Equipment, EquipmentInput, Kit, KitInput, Member, TaskInput, TeamTask } from './types'
 // 部署后设 VITE_USE_MOCK_API=false，即改为请求 Azure Functions 的 /api 路由。
 const useMockApi = import.meta.env.VITE_USE_MOCK_API !== 'false'
@@ -10,6 +10,8 @@ export const addEquipment = (input: EquipmentInput): Promise<Equipment> => useMo
 export const updateEquipment = (id: number, input: EquipmentInput): Promise<Equipment> => useMockApi ? updateMockEquipment(id, input) : request(`/equipment/${id}`, { method: 'PATCH', body: JSON.stringify(input) })
 export const getKits = (): Promise<Kit[]> => useMockApi ? listMockKits() : request('/kits')
 export const createKit = (input: KitInput): Promise<Kit> => useMockApi ? createMockKit(input) : request('/kits', { method: 'POST', body: JSON.stringify(input) })
+export const updateKit = (id: number, input: KitInput): Promise<Kit> => useMockApi ? updateMockKit(id, input) : request(`/kits/${id}`, { method: 'PATCH', body: JSON.stringify(input) })
+export const deleteKit = (id: number): Promise<void> => useMockApi ? deleteMockKit(id) : request(`/kits/${id}`, { method: 'DELETE' })
 export const borrowKit = (kitId: number, memberId: number): Promise<void> => useMockApi ? borrowMockKit(kitId, memberId) : request(`/kits/${kitId}/borrow`, { method: 'POST', body: JSON.stringify({ memberId }) })
 export const returnKit = (kitBorrowRecordId: number, memberId: number): Promise<void> => useMockApi ? returnMockKit(kitBorrowRecordId, memberId) : request('/kits/return', { method: 'POST', body: JSON.stringify({ kitBorrowRecordId, memberId }) })
 export const deleteEquipment = (id: number): Promise<void> => useMockApi ? deleteMockEquipment(id) : request(`/equipment/${id}`, { method: 'DELETE' })
