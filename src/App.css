@@ -53,7 +53,8 @@ h1 { margin:0; color:#37352f; font-family:'Noto Serif SC',Georgia,serif; font-si
 @media (max-width:620px) { .primary-nav button.selected { color:#fff; background:#37352f; } }
 
 /* 克制的动效：帮助用户感知页面层级，不影响快速操作。 */
-.view-content { animation:viewEnter .22s cubic-bezier(.2,.75,.35,1) both; }
+.view-content { position:relative; z-index:1; animation:viewEnter .22s cubic-bezier(.2,.75,.35,1) both; }
+.secondary-nav,.category-filters { position:relative; z-index:2; }
 .header-title h1 { animation:titleEnter .2s ease-out both; }
 .header-popover { transform-origin:top right; animation:popoverEnter .16s cubic-bezier(.2,.8,.3,1) both; }
 .dialog-backdrop { animation:fadeEnter .16s ease-out both; }
@@ -63,7 +64,7 @@ h1 { margin:0; color:#37352f; font-family:'Noto Serif SC',Georgia,serif; font-si
 .equipment-card,.kit-card,.task-card { transition:background-color .18s ease,box-shadow .18s ease; }
 @media (hover:hover) { .equipment-card:hover,.kit-card:hover,.task-card:hover { box-shadow:0 8px 24px rgba(15,15,15,.055); }.card-action button:hover,.task-actions button:hover,.add-link:hover,.manage-link:hover { transform:translateY(-1px); } }
 .card-action button:active,.task-actions button:active,.add-link:active,.manage-link:active,.primary-nav button:active,.secondary-nav button:active,.category-filters button:active,.equipment-section-title button:active { transform:scale(.97); }
-@keyframes viewEnter { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:translateY(0); } }
+@keyframes viewEnter { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:none; } }
 @keyframes titleEnter { from { opacity:.25; transform:translateY(3px); } to { opacity:1; transform:translateY(0); } }
 @keyframes popoverEnter { from { opacity:0; transform:translateY(-4px) scale(.98); } to { opacity:1; transform:translateY(0) scale(1); } }
 @keyframes fadeEnter { from { opacity:0; } to { opacity:1; } }
