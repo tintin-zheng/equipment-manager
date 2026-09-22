@@ -87,7 +87,7 @@ function App() {
   const archivedTasks = view === 'task-history' || view === 'task-records'
   const pageTitle = primary === 'equipment' ? '器材管理' : primary === 'tasks' ? '团队任务' : primary === 'records' ? '记录' : '我的'
   const secondaryTabs: { key: View; label: string }[] = primary === 'equipment' ? [{ key: 'all', label: '全部' }, { key: 'available', label: '可借' }, { key: 'borrowed', label: '已借出' }] : primary === 'tasks' ? [{ key: 'tasks', label: '进行中' }, { key: 'task-history', label: '已归档' }] : primary === 'records' ? [{ key: 'history', label: '借还记录' }, { key: 'task-records', label: '任务记录' }] : [{ key: 'mine', label: '器材借用' }, { key: 'my-tasks', label: '参与任务' }]
-  return <main className="app-shell">
+  return <main className={`app-shell ${primary === 'records' ? 'records-page' : ''}`}>
     <header>
       <div className="header-title"><img className="site-logo" src={logo} alt="ZJE-Lens" /><h1>{pageTitle}</h1></div>
       {currentUser && <div className="user-area">
