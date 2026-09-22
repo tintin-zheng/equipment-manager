@@ -1,6 +1,8 @@
 .app-shell { width:min(1080px,100%); min-height:100vh; margin:0 auto; padding:62px 48px 86px; }
 header { display:flex; justify-content:space-between; align-items:flex-end; gap:22px; padding-bottom:23px; border-bottom:1px solid #e9e9e7; }
 .header-title { min-width:0; }
+.switch-identity-link { margin-top:10px; padding:0; border:0; color:#9b9a97; background:transparent; font-size:11px; }
+.switch-identity-link:hover { color:#37352f; text-decoration:underline; }
 .brand { display:flex; align-items:center; gap:8px; margin:0 0 12px; color:#787774; font:500 12px/1 'DM Mono',monospace; letter-spacing:.3px; text-transform:uppercase; }
 .site-logo { display:block; width:104px; height:auto; margin:0 0 13px; }
 h1 { margin:0; color:#37352f; font-family:'Noto Serif SC',Georgia,serif; font-size:42px; line-height:1.18; letter-spacing:-2px; }
@@ -60,7 +62,7 @@ h1 { margin:0; color:#37352f; font-family:'Noto Serif SC',Georgia,serif; font-si
 .dialog-backdrop { animation:fadeEnter .16s ease-out both; }
 .dialog-backdrop > * { animation:dialogEnter .2s cubic-bezier(.2,.8,.3,1) both; }
 .notice,.error,.startup-notice,.management-note { animation:noticeEnter .2s ease-out both; }
-.primary-nav button,.secondary-nav button,.category-filters button,.identity-menu-button,.manage-link,.add-link,.equipment-section-title button,.card-action button,.task-actions button { transition:color .16s ease,background-color .16s ease,border-color .16s ease,box-shadow .16s ease,transform .12s ease; }
+.primary-nav button,.secondary-nav button,.category-filters button,.switch-identity-link,.manage-link,.add-link,.equipment-section-title button,.card-action button,.task-actions button { transition:color .16s ease,background-color .16s ease,border-color .16s ease,box-shadow .16s ease,transform .12s ease; }
 .equipment-card,.kit-card,.task-card { transition:background-color .18s ease,box-shadow .18s ease; }
 @media (hover:hover) { .equipment-card:hover,.kit-card:hover,.task-card:hover { box-shadow:0 8px 24px rgba(15,15,15,.055); }.card-action button:hover,.task-actions button:hover,.add-link:hover,.manage-link:hover { transform:translateY(-1px); } }
 .card-action button:active,.task-actions button:active,.add-link:active,.manage-link:active,.primary-nav button:active,.secondary-nav button:active,.category-filters button:active,.equipment-section-title button:active { transform:scale(.97); }
