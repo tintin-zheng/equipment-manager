@@ -4,11 +4,11 @@ import type { BorrowRecord, Equipment, EquipmentInput, Kit, KitInput, Member, Ta
 import logo from './assets/zje-lens-logo.png'
 import './App.css'
 
-type View = 'all' | 'available' | 'borrowed' | 'mine' | 'my-tasks' | 'tasks' | 'history' | 'task-history' | 'task-records'
+type View = 'all' | 'available' | 'borrowed' | 'mine' | 'my-tasks' | 'tasks' | 'history' | 'task-records'
 type PrimaryTab = 'equipment' | 'tasks' | 'records' | 'mine'
 type CategoryFilter = 'all' | 'camera' | 'lens' | 'accessory'
 const primaryTabs: { key: PrimaryTab; label: string; view: View }[] = [{ key: 'equipment', label: '器材', view: 'all' }, { key: 'tasks', label: '任务', view: 'tasks' }, { key: 'records', label: '记录', view: 'history' }, { key: 'mine', label: '我的', view: 'mine' }]
-const primaryForView = (view: View): PrimaryTab => ['all', 'available', 'borrowed'].includes(view) ? 'equipment' : ['tasks', 'task-history'].includes(view) ? 'tasks' : ['history', 'task-records'].includes(view) ? 'records' : 'mine'
+const primaryForView = (view: View): PrimaryTab => ['all', 'available', 'borrowed'].includes(view) ? 'equipment' : view === 'tasks' ? 'tasks' : ['history', 'task-records'].includes(view) ? 'records' : 'mine'
 const categoryFilters: { key: CategoryFilter; label: string }[] = [{ key: 'all', label: '全部' }, { key: 'camera', label: '相机' }, { key: 'lens', label: '镜头' }, { key: 'accessory', label: '配件' }]
 const categoryOrder = ['相机', '镜头', '麦克风', '存储卡', '提词器', '三脚架', '电池', '滤镜', '监看器', '读卡器', '其他']
 const categoryRank = (category: string) => { const index = categoryOrder.indexOf(category); return index < 0 ? categoryOrder.length : index }
@@ -29,8 +29,8 @@ function App() {
         setCurrentUser(saved)
         setTasks(saved ? [...activeTasks, ...archivedTasks].filter((task) => task.participants.some((participant) => participant.memberId === saved.id)) : [])
         setEquipment([]); setKits([])
-      } else if (['tasks', 'task-history', 'task-records'].includes(view)) {
-        const archived = view === 'task-history' || view === 'task-records'
+      } else if (['tasks', 'task-records'].includes(view)) {
+        const archived = view === 'task-records'
         const [allMembers, taskList] = await Promise.all([getMembers(), getTasks(archived)])
         const saved = user ?? allMembers.find((member) => member.id === storedMemberId) ?? null
         setCurrentUser(saved); setTasks(taskList); setEquipment([]); setKits([])
@@ -83,10 +83,10 @@ function App() {
   async function cancelParticipation(task: TeamTask) { if (!currentUser) return; try { await leaveTask(task.id, currentUser.id); message(`已取消参与：${task.title}`); await loadData(currentUser) } catch (reason) { message(reason instanceof Error ? reason.message : '取消参与失败，请重试') } }
   if (!currentUser && !loading) return <IdentityPicker onRegistered={chooseUser} />
   const primary = primaryForView(view)
-  const taskContent = ['tasks', 'task-history', 'task-records', 'my-tasks'].includes(view)
-  const archivedTasks = view === 'task-history' || view === 'task-records'
+  const taskContent = ['tasks', 'task-records', 'my-tasks'].includes(view)
+  const archivedTasks = view === 'task-records'
   const pageTitle = primary === 'equipment' ? '器材管理' : primary === 'tasks' ? '团队任务' : primary === 'records' ? '记录' : `Hi, ${currentUser?.name ?? ''}`
-  const secondaryTabs: { key: View; label: string }[] = primary === 'equipment' ? [{ key: 'all', label: '全部' }, { key: 'available', label: '可借' }, { key: 'borrowed', label: '已借出' }] : primary === 'tasks' ? [{ key: 'tasks', label: '进行中' }, { key: 'task-history', label: '已归档' }] : primary === 'records' ? [{ key: 'history', label: '借还记录' }, { key: 'task-records', label: '任务记录' }] : [{ key: 'mine', label: '器材借用' }, { key: 'my-tasks', label: '参与任务' }]
+  const secondaryTabs: { key: View; label: string }[] = primary === 'equipment' ? [{ key: 'all', label: '全部' }, { key: 'available', label: '可借' }, { key: 'borrowed', label: '已借出' }] : primary === 'tasks' ? [] : primary === 'records' ? [{ key: 'history', label: '借还记录' }, { key: 'task-records', label: '任务记录' }] : [{ key: 'mine', label: '器材借用' }, { key: 'my-tasks', label: '参与任务' }]
   return <main className={`app-shell ${primary === 'records' ? 'records-page' : ''}`}>
     <header>
       <div className="header-title"><img className="site-logo" src={logo} alt="ZJE-Lens" /><h1 key={pageTitle}>{pageTitle}</h1>{primary === 'mine' && <button className="switch-identity-link" onClick={switchUser}>切换身份</button>}</div>
@@ -96,7 +96,7 @@ function App() {
       </div>}
     </header>
     <nav className="primary-nav" aria-label="主导航">{primaryTabs.map((item) => <button key={item.key} className={primary === item.key ? 'selected' : ''} onClick={() => changeView(item.view)}>{item.label}</button>)}</nav>
-    <div className="secondary-nav" aria-label="页面分类">{secondaryTabs.map((item) => <button key={item.key} className={view === item.key ? 'selected' : ''} onClick={() => changeView(item.key)}>{item.label}</button>)}</div>
+    {secondaryTabs.length > 0 && <div className="secondary-nav" aria-label="页面分类">{secondaryTabs.map((item) => <button key={item.key} className={view === item.key ? 'selected' : ''} onClick={() => changeView(item.key)}>{item.label}</button>)}</div>}
     {primary === 'equipment' && <div className="category-filters" aria-label="器材类别筛选">{categoryFilters.map((item) => <button key={item.key} className={categoryFilter === item.key ? 'selected' : ''} onClick={() => setCategoryFilter(item.key)}>{item.label}</button>)}</div>}
     {notice && <div className="notice" role="status">{notice}<button onClick={() => setNotice('')} aria-label="关闭提示">×</button></div>}
     {startupMessage && <div className="startup-notice" role="status"><span className="startup-dot" />{startupMessage}</div>}
@@ -133,7 +133,7 @@ function TaskBoard({ tasks, loading, currentUser, archived, mine, managing, onJo
     const archivedTasks = tasks.filter((task) => Boolean(task.archivedAt))
     return loading ? <p className="loading">正在读取任务…</p> : <><section className="personal-section"><div className="personal-section-title"><h2>正在参与</h2><span>{activeTasks.length} 项</span></div>{activeTasks.length > 0 ? renderTasks(activeTasks, false) : <div className="empty compact-empty">你目前还没有参与进行中的任务。</div>}</section><section className="personal-section"><div className="personal-section-title"><h2>参与记录</h2><span>{archivedTasks.length} 项</span></div>{archivedTasks.length > 0 ? renderTasks(archivedTasks, true) : <div className="empty compact-empty">你还没有已归档的参与记录。</div>}</section></>
   }
-  return <><section className="summary compact"><strong>{loading ? '—' : tasks.length} 项</strong></section>{loading ? <p className="loading">正在读取任务…</p> : renderTasks(tasks, archived)}{!loading && tasks.length === 0 && <div className="empty">{archived ? '暂时没有已归档的任务。' : '暂时没有团队任务。点击右上角“发布”创建第一项任务。'}</div>}</>
+  return <><section className={`summary ${archived ? 'compact' : 'task-summary'}`}><strong>{loading ? '—' : tasks.length} 项</strong></section>{loading ? <p className="loading">正在读取任务…</p> : renderTasks(tasks, archived)}{!loading && tasks.length === 0 && <div className="empty">{archived ? '暂时没有已归档的任务。' : '暂时没有团队任务。点击右上角“发布”创建第一项任务。'}</div>}</>
 }
 function TaskCard({ task, currentUser, archived, managing, onJoin, onLeave, onEdit, onArchive, onDelete }: { task: TeamTask; currentUser: Member | null; archived: boolean; managing: boolean; onJoin: () => void; onLeave: () => void; onEdit: () => void; onArchive: () => void; onDelete: () => void }) { const joined = task.participants.some((participant) => participant.memberId === currentUser?.id); return <article className="task-card"><div className="task-card-top"><div><p className="task-label">{archived ? '已归档任务' : '团队任务'}</p><h2>{task.title}</h2></div>{!archived && !managing && <button className="task-edit" onClick={onEdit}>编辑</button>}</div><dl className="task-details"><div><dt>时间</dt><dd>{formatTaskTime(task.taskTime)}</dd></div><div><dt>地点</dt><dd>{task.location || '地点待补充'}</dd></div></dl>{task.note && <p className="task-note">{task.note}</p>}<div className="participants"><span>参与人员 · {task.participants.length} 人</span><div className="participant-list">{task.participants.length ? task.participants.map((participant) => <i key={participant.memberId}>{participant.memberName}</i>) : <em>暂无参与者</em>}</div></div><div className="task-equipment"><span>任务器材 · {task.equipment.length} 件</span><div>{task.equipment.length ? task.equipment.map((item, index) => <p key={`${item.equipmentId}-${item.memberId}-${index}`}><b>{item.equipmentName}</b><small>{item.memberName} · {item.equipmentCategory}</small></p>) : <em>参与者当前没有借用器材</em>}</div></div>{!archived && <div className="task-actions">{managing ? <><button className="archive-task" onClick={onArchive}>归档任务</button><button className="delete-task" onClick={onDelete}>删除任务</button></> : <button className={joined ? 'joined cancel-task' : ''} onClick={joined ? onLeave : onJoin}>{joined ? '取消参与' : '参与任务'}</button>}</div>}</article> }
 function TaskDialog({ task, onClose, onSave }: { task?: TeamTask; onClose: () => void; onSave: (input: TaskInput, task?: TeamTask) => Promise<void> }) { const [title, setTitle] = useState(task?.title ?? ''); const [taskTime, setTaskTime] = useState(toDateTimeLocal(task?.taskTime ?? null)); const [location, setLocation] = useState(task?.location ?? ''); const [note, setNote] = useState(task?.note ?? ''); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); async function submit(event: FormEvent) { event.preventDefault(); setBusy(true); setError(''); try { await onSave({ title, taskTime: taskTime ? new Date(taskTime).toISOString() : null, location, note }, task) } catch (reason) { setError(reason instanceof Error ? reason.message : '保存任务失败') } finally { setBusy(false) } } return <div className="dialog-backdrop" onMouseDown={onClose}><form className="equipment-form task-form" onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}><div className="form-title"><h2>{task ? '编辑任务' : '发布新任务'}</h2><button type="button" onClick={onClose}>×</button></div><label>任务名称 <b>必填</b><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：周末外拍" maxLength={200} autoFocus /></label><label>任务时间 <small>可选，可后续补充</small><input type="datetime-local" value={taskTime} onChange={(event) => setTaskTime(event.target.value)} /></label><label>任务地点 <small>可选，可后续补充</small><input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="例如：西湖断桥" maxLength={200} /></label><label>备注 <small>可选，可后续补充</small><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="说明任务内容、准备事项等" maxLength={1000} /></label>{error && <p className="form-error">{error}</p>}<button className="submit-equipment" disabled={busy}>{busy ? '正在保存…' : task ? '保存修改' : '发布任务'}</button></form></div> }
