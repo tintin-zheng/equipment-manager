@@ -89,7 +89,7 @@ function App() {
   const secondaryTabs: { key: View; label: string }[] = primary === 'equipment' ? [{ key: 'all', label: '全部' }, { key: 'available', label: '可借' }, { key: 'borrowed', label: '已借出' }] : primary === 'tasks' ? [{ key: 'tasks', label: '进行中' }, { key: 'task-history', label: '已归档' }] : primary === 'records' ? [{ key: 'history', label: '借还记录' }, { key: 'task-records', label: '任务记录' }] : [{ key: 'mine', label: '器材借用' }, { key: 'my-tasks', label: '参与任务' }]
   return <main className={`app-shell ${primary === 'records' ? 'records-page' : ''}`}>
     <header>
-      <div className="header-title"><img className="site-logo" src={logo} alt="ZJE-Lens" /><h1>{pageTitle}</h1></div>
+      <div className="header-title"><img className="site-logo" src={logo} alt="ZJE-Lens" /><h1 key={pageTitle}>{pageTitle}</h1></div>
       {currentUser && <div className="user-area">
         {view === 'tasks' && <button className="add-link" onClick={() => setTaskEditor('new')}>＋ 发布</button>}
         <div className="user-stack"><div className="header-menu-wrap"><button className="identity-menu-button" onClick={() => setUserMenuOpen(!userMenuOpen)}>{currentUser.name}<span>⌄</span></button>{userMenuOpen && <div className="header-popover user-popover"><small>当前身份</small><b>{currentUser.name}</b><button onClick={switchUser}>切换身份</button></div>}</div>{(primary === 'equipment' || view === 'tasks') && <button className="manage-link" onClick={() => primary === 'equipment' ? toggleManagement() : setTaskManaging(!taskManaging)}>{primary === 'equipment' ? managing ? '完成管理' : '管理器材' : taskManaging ? '完成管理' : '管理任务'}</button>}</div>
@@ -103,7 +103,9 @@ function App() {
     {error && <div className="error">{error}</div>}
     {managing && <div className="management-note">管理模式：可编辑器材和 Kit；仅可删除从未借出过的器材或 Kit。</div>}
     {taskManaging && <div className="management-note">任务管理模式：可归档已完成任务，或删除布置错误的任务。</div>}
-    {taskContent ? <TaskBoard tasks={tasks} loading={loading} currentUser={currentUser} archived={archivedTasks} mine={view === 'my-tasks'} managing={taskManaging} onJoin={participate} onLeave={cancelParticipation} onEdit={setTaskEditor} onArchive={archive} onDelete={removeTask} /> : <EquipmentPage view={view} displayed={displayed} kits={kits} currentUser={currentUser} categoryFilter={categoryFilter} history={history} loading={loading} managing={managing} onAddEquipment={() => setAdding(true)} onAddKit={() => setAddingKit(true)} onBorrow={borrow} onReturn={returnItem} onBorrowKit={borrowWholeKit} onReturnKit={returnWholeKit} onEdit={setEditingEquipment} onDelete={removeEquipment} onEditKit={setEditingKit} onDeleteKit={removeKit} />}
+    <section className="view-content" key={`${view}-${categoryFilter}`}>
+      {taskContent ? <TaskBoard tasks={tasks} loading={loading} currentUser={currentUser} archived={archivedTasks} mine={view === 'my-tasks'} managing={taskManaging} onJoin={participate} onLeave={cancelParticipation} onEdit={setTaskEditor} onArchive={archive} onDelete={removeTask} /> : <EquipmentPage view={view} displayed={displayed} kits={kits} currentUser={currentUser} categoryFilter={categoryFilter} history={history} loading={loading} managing={managing} onAddEquipment={() => setAdding(true)} onAddKit={() => setAddingKit(true)} onBorrow={borrow} onReturn={returnItem} onBorrowKit={borrowWholeKit} onReturnKit={returnWholeKit} onEdit={setEditingEquipment} onDelete={removeEquipment} onEditKit={setEditingKit} onDeleteKit={removeKit} />}
+    </section>
     {adding && <AddEquipmentDialog onClose={() => setAdding(false)} onSave={saveEquipment} />}
     {addingKit && <AddKitDialog equipment={equipment} onClose={() => setAddingKit(false)} onSave={saveKit} />}
     {editingEquipment && <AddEquipmentDialog item={editingEquipment} onClose={() => setEditingEquipment(null)} onSave={saveEquipmentEdit} />}
