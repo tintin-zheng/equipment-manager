@@ -95,7 +95,7 @@ function App() {
       </div>}
     </header>
     <nav className="primary-nav" aria-label="主导航">{primaryTabs.map((item) => <button key={item.key} className={primary === item.key ? 'selected' : ''} onClick={() => changeView(item.view)}>{item.label}</button>)}</nav>
-    {view === 'tasks' && <button className="task-fab" onClick={() => setTaskEditor('new')} aria-label="发布新任务">+</button>}
+    {view === 'tasks' && <button className="task-fab" onClick={() => setTaskEditor('new')} aria-label="发布新任务" />}
     {secondaryTabs.length > 0 && <div className="secondary-nav" aria-label="页面分类">{secondaryTabs.map((item) => <button key={item.key} className={view === item.key ? 'selected' : ''} onClick={() => changeView(item.key)}>{item.label}</button>)}</div>}
     {primary === 'equipment' && <div className="category-filters" aria-label="器材类别筛选">{categoryFilters.map((item) => <button key={item.key} className={categoryFilter === item.key ? 'selected' : ''} onClick={() => setCategoryFilter(item.key)}>{item.label}</button>)}</div>}
     {notice && <div className="notice" role="status">{notice}<button onClick={() => setNotice('')} aria-label="关闭提示">×</button></div>}
