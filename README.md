@@ -39,6 +39,8 @@ func start
 
 管理模式的删除接口为 `DELETE /api/equipment/:id`。为了保留借还历史，只有从未借出且当前可借的器材可以删除；借出中或已有借还记录的器材会被拒绝删除。
 
+`POST /api/return-all` 会在一个 SQL 事务中归还指定成员的所有单件器材和 Kit，并重新统计受影响器材的库存状态。
+
 ## 部署到 Azure
 
 1. 创建 Azure SQL Database（小型/免费额度优先），执行 `database/schema.sql`。
