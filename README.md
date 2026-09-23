@@ -1,53 +1,334 @@
 # ZJE-Lens 团队工作台
 
-为小型摄影团队制作的手机优先器材借还网页。用户首次选择或注册身份后，浏览器只保存该身份；器材状态、借还人和历史记录由后端数据库保存。
+一个面向熟人小团队的器材借还与任务协作网站，最初为 ZJE-Lens 摄影团队开发。
 
-## 本地运行（Phase 1）
+它适合十几人到几十人的摄影团队、工作室、社团或实验室：成员之间互相认识，希望用尽量少的操作完成器材登记、借出、归还、任务参与和历史查询。项目没有密码和复杂权限系统，第一次输入姓名后会在当前浏览器记住身份。
+
+> [!IMPORTANT]
+> 这是一个低摩擦的熟人团队工具。API 默认允许匿名访问，知道网址的人可以注册姓名并进行操作。它不适合公开互联网服务、互不信任的用户群体或需要严格权限审计的高价值资产管理场景。
+
+## 界面预览
+
+### 桌面端器材管理
+
+![桌面端器材管理界面](docs/images/equipment-desktop.png)
+
+### 手机端团队任务
+
+<p align="center">
+  <img src="docs/images/tasks-mobile.png" width="360" alt="手机端团队任务界面" />
+</p>
+
+截图使用本地模拟数据生成，不包含正式数据库中的成员或借还记录。
+
+## 主要功能
+
+- 姓名即身份：第一次输入 2–6 个中文汉字，浏览器通过 `localStorage` 记住当前成员。
+- 器材库存：支持类别、数量、备注、可借数量和借用人。
+- Kit：将多件器材组成一套，整套借出和归还。
+- 借还记录：永久保留借出时间、归还时间和借用人，可导出 CSV。
+- 团队任务：发布任务、补充时间与地点、参与或取消参与、归档和删除。
+- 任务器材：参与者名下正在借用的器材会自动显示在相应任务中。
+- 手机优先：响应式布局、悬浮底部导航、自动跟随系统深色模式。
+- 数据一致性：借出操作使用 SQL 事务和锁，避免多人同时借出超过库存。
+
+## 系统如何运行
+
+```mermaid
+flowchart LR
+  A[手机或电脑浏览器] -->|HTTPS| B[Azure Static Web Apps<br/>React 前端]
+  B -->|/api · JSON| C[Azure Functions<br/>TypeScript / Node.js]
+  C -->|加密 SQL 连接| D[(Azure SQL Database)]
+  E[GitHub main 分支] -->|GitHub Actions| B
+```
+
+各部分职责如下：
+
+1. **React 前端**负责页面显示和交互。`localStorage` 只保存当前浏览器使用的成员 ID 与姓名。
+2. **Azure Functions**提供 `/api/*` REST API，检查输入并处理借出、归还、任务和 Kit 操作。
+3. **Azure SQL Database**是唯一的业务数据源，保存成员、器材、库存、任务和全部历史记录。
+4. **Azure Static Web Apps**托管前端，并将同一域名下的 `/api` 请求转发给项目中的 Functions。
+5. **GitHub Actions**在每次推送到 `main` 后自动构建并部署前端与 API。
+
+借出操作不会相信浏览器显示的“可借”状态。后端会在 SQL 事务中重新检查实时库存，确认仍有库存后才写入借还记录。
+
+## 技术栈
+
+| 部分 | 技术 |
+| --- | --- |
+| 前端 | React 19、TypeScript、Vite |
+| 后端 | Azure Functions v4、TypeScript、Node.js |
+| 数据库 | Azure SQL Database、`mssql` |
+| 托管 | Azure Static Web Apps |
+| 自动部署 | GitHub Actions |
+
+## 项目结构
+
+```text
+.
+├── src/
+│   ├── App.tsx                  # 页面、交互与主要组件
+│   ├── App.css                  # 响应式布局和深色模式
+│   ├── api.ts                   # 前端唯一的 API 入口
+│   ├── mockApi.ts               # 本地演示用模拟数据
+│   ├── types.ts                 # 前端数据类型
+│   └── assets/
+│       └── zje-lens-logo.png    # 团队 Logo
+├── api/
+│   ├── src/index.ts             # Azure Functions 路由与业务逻辑
+│   ├── src/database.ts          # Azure SQL 连接池
+│   └── local.settings.json.example
+├── database/
+│   ├── schema.sql               # 全新数据库完整初始化脚本
+│   ├── equipment-quantity.sql   # 旧数据库的库存数量迁移
+│   ├── kits.sql                 # 旧数据库的 Kit 功能迁移
+│   └── tasks.sql                # 旧数据库的任务功能迁移
+├── public/                      # favicon、站点验证文件等静态资源
+├── staticwebapp.config.json     # Static Web Apps 路由设置
+└── .github/workflows/           # 自动部署工作流
+```
+
+## 本地体验
+
+需要 Node.js 20 或更高版本。
 
 ```bash
+git clone https://github.com/tintin-zheng/equipment-manager.git
+cd equipment-manager
 npm install
 npm run dev
 ```
 
-访问 http://localhost:5173 。默认使用内存 mock API，适合演示完整的选择身份、借出和归还流程。刷新页面会重置 mock 借还数据；身份仍会保留在 localStorage。
+打开 `http://localhost:5173`。
 
-```text
-src/App.tsx          页面与交互
-src/api.ts           唯一的前端 API 入口
-src/mockApi.ts       第一阶段的内存模拟数据
-src/types.ts         前后端共享的数据形状
-api/                 Azure Functions（Phase 2）
-database/schema.sql  Azure SQL 表、约束和种子数据
-database/equipment-quantity.sql  已部署数据库的库存数量升级脚本
-```
+本地开发默认使用 `src/mockApi.ts`，不需要 Azure 账号或数据库，可以直接体验注册身份、借出、归还、Kit 和任务功能。模拟借还数据在刷新页面后会重置，浏览器记住的身份仍会保留。
 
-## 切换至真实 Azure Functions
-
-在前端构建环境设置 `VITE_USE_MOCK_API=false`。此时 `src/api.ts` 会请求 `/api/*`，Azure Static Web Apps 会将该路径代理到 `api/` 中的 Functions。
-
-进入 `api` 后安装和本地运行：
+提交前可以运行：
 
 ```bash
-npm install
-cp local.settings.json.example local.settings.json
-# 填写 local.settings.json 的 SQL_CONNECTION_STRING
+npm run lint
 npm run build
-func start
+npm run build --prefix api
 ```
 
-全新数据库先在 Azure SQL Database 的查询编辑器执行 `database/schema.sql`。已经运行中的数据库不要重新执行初始化脚本，只需执行一次 `database/equipment-quantity.sql` 来增加库存数量。借出接口会在事务内锁定器材并重新统计当前借出数量，只有库存仍有剩余时才会创建记录，从而避免多人同时借出超过库存。
+## 部署到自己的 Azure
 
-管理模式的删除接口为 `DELETE /api/equipment/:id`。为了保留借还历史，只有从未借出且当前可借的器材可以删除；借出中或已有借还记录的器材会被拒绝删除。
+下面是一套从空白 Azure 账号开始的完整流程。Azure Portal 的栏目名称可能随界面更新略有变化，但需要填写的内容不变。
 
-`POST /api/return-all` 会在一个 SQL 事务中归还指定成员的所有单件器材和 Kit，并重新统计受影响器材的库存状态。
+### 1. Fork 仓库并准备代码
 
-## 部署到 Azure
+1. 点击 GitHub 页面右上角的 **Fork**，将仓库复制到自己的 GitHub 账号。
+2. 如果需要，先按照下文“更换团队名称和 Logo”完成品牌替换。
+3. 确认默认分支为 `main`。
 
-1. 创建 Azure SQL Database（小型/免费额度优先），执行 `database/schema.sql`。
-2. 创建 Azure Static Web App，连接 GitHub 仓库，构建预设选 **React**。
-3. 在 Static Web App 的应用设置加入 `SQL_CONNECTION_STRING`。生产工作流已经在构建时设置 `VITE_USE_MOCK_API=false`，无需在 Portal 再填写它。
-4. 将 Azure 创建时给出的部署令牌保存到 GitHub Actions Secret：`AZURE_STATIC_WEB_APPS_API_TOKEN`。
-5. 推送到 `main`，`.github/workflows/azure-static-web-apps.yml` 自动构建和部署。
-6. 部署成功后，用 Azure 给出的 `https://<name>.azurestaticapps.net` 地址生成一个普通二维码，张贴为团队入口即可。
+你也可以先克隆自己的 Fork：
 
-没有登录、OAuth、Redis、Docker 或复杂状态管理。API 目前保持匿名访问，符合熟人小团队的低摩擦使用场景。
+```bash
+git clone https://github.com/<你的 GitHub 用户名>/equipment-manager.git
+cd equipment-manager
+npm install
+```
+
+### 2. 创建 Azure SQL Database
+
+在 Azure Portal 中搜索 **SQL databases**，选择“创建”：
+
+1. 创建或选择一个资源组，例如 `equipment-manager-rg`。
+2. 数据库名称可填写 `equipment_manager`。
+3. 点击“创建新服务器”，选择距离团队较近的区域。
+4. 身份验证方式请选择支持 **SQL 身份验证** 的选项，并设置管理员用户名和高强度密码。
+5. 不要启用“仅 Microsoft Entra 身份验证”，除非你准备自行改造后端连接方式。
+6. 计算层选择适合小项目的免费额度或较低配置的 Serverless。启用自动暂停可以节省费用，但长时间无人访问后的第一次打开可能需要几十秒唤醒。
+7. 网络连接选择公共终结点。在服务器防火墙中：
+   - 添加你当前电脑的客户端 IP，便于使用查询编辑器；
+   - 开启“允许 Azure 服务和资源访问此服务器”，让 Static Web Apps 中的 Functions 可以连接数据库。
+
+创建完成后，进入数据库的 **Query editor / 查询编辑器**，使用刚才创建的 SQL 管理员账号登录。
+
+打开 [`database/schema.sql`](database/schema.sql)，复制全部 SQL 并执行一次。该文件会创建：
+
+- `members`
+- `equipment`
+- `borrow_records`
+- `tasks` 与 `task_participants`
+- `kits`、`kit_items` 与 `kit_borrow_records`
+- 必要的外键、检查约束和索引
+
+`schema.sql` 最后包含几条演示成员和器材数据。部署给自己的团队时，可以在执行前删除最后两条 `INSERT`，让数据库从空数据开始。
+
+> [!WARNING]
+> `schema.sql` 只应对全新数据库执行一次。已经部署过旧版本的数据库不要重复执行；应根据缺少的功能分别执行 `equipment-quantity.sql`、`kits.sql` 或 `tasks.sql`，每个迁移文件同样只执行一次。
+
+### 3. 准备 SQL 连接字符串
+
+进入 Azure SQL Database 的“连接字符串”页面，准备如下格式的连接字符串：
+
+```text
+Server=tcp:<服务器名>.database.windows.net,1433;Initial Catalog=<数据库名>;Persist Security Info=False;User ID=<SQL管理员用户名>;Password=<SQL管理员密码>;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;
+```
+
+不要把真实密码写进代码、README、Git 提交或公开截图。下一步会把它保存为 Azure 的加密应用设置。
+
+### 4. 创建 Azure Static Web App
+
+在 Azure Portal 中搜索 **Static Web Apps**，选择“创建”：
+
+1. 使用与 SQL Database 相同或邻近的资源组和区域。
+2. 托管计划选择 Free 即可满足小团队使用。
+3. 部署来源选择 **Other / 其他**。本仓库已经包含 GitHub Actions 工作流，不需要 Azure 再生成一份。
+4. 创建资源并等待部署完成。
+
+进入新建的 Static Web App，在“配置 / 环境变量 / 应用设置”中新增：
+
+| 名称 | 值 |
+| --- | --- |
+| `SQL_CONNECTION_STRING` | 上一步准备的完整 Azure SQL 连接字符串 |
+
+保存后要确认设置已经应用成功。Functions 运行时会从这里读取连接字符串。
+
+### 5. 配置 GitHub 部署令牌
+
+1. 在 Azure Static Web App 概览页选择 **Manage deployment token / 管理部署令牌**。
+2. 复制部署令牌。
+3. 打开你 Fork 后的 GitHub 仓库。
+4. 进入 **Settings → Secrets and variables → Actions**。
+5. 点击 **New repository secret**，创建：
+
+```text
+Name:  AZURE_STATIC_WEB_APPS_API_TOKEN
+Value: <刚才复制的部署令牌>
+```
+
+令牌是敏感信息，不要放进普通变量、代码或聊天截图。
+
+### 6. 检查自动部署配置
+
+仓库中的 GitHub Actions 工作流已经配置好三个路径：
+
+```yaml
+app_location: "/"
+api_location: "api"
+output_location: "dist"
+```
+
+工作流还会在生产构建中设置：
+
+```yaml
+VITE_USE_MOCK_API: "false"
+```
+
+因此线上网站会请求真实的 Azure Functions，而不是本地模拟数据。
+
+推送任意一次提交到 `main`：
+
+```bash
+git add .
+git commit -m "Configure my team workspace"
+git push origin main
+```
+
+然后进入 GitHub 仓库的 **Actions** 页面，等待 `Azure Static Web Apps CI/CD` 显示绿色成功标记。
+
+### 7. 验证部署
+
+Azure 会提供类似下面的地址：
+
+```text
+https://<随机名称>.azurestaticapps.net
+```
+
+依次检查：
+
+1. 打开网站，输入一个中文姓名。
+2. 录入一件测试器材并尝试借出、归还。
+3. 打开 `https://<你的地址>/api/members`，应看到 JSON 成员列表。
+4. 刷新网页，确认浏览器仍记得当前姓名。
+5. 在另一个浏览器中访问，确认器材状态来自数据库而不是当前设备。
+
+如果网页能打开但 API 报错，优先检查：
+
+- Static Web App 的 `SQL_CONNECTION_STRING` 是否填写完整并点击了保存；
+- SQL Server 是否允许 Azure 服务访问；
+- 数据库是否已经执行完整的 `schema.sql`；
+- SQL 用户名、密码、服务器名和数据库名是否正确。
+
+## 更换团队名称和 Logo
+
+### 最简单的 Logo 替换方式
+
+将你自己的透明背景 PNG 命名为：
+
+```text
+zje-lens-logo.png
+```
+
+然后覆盖：
+
+```text
+src/assets/zje-lens-logo.png
+```
+
+保持文件名不变就不需要修改 React 代码。推荐使用横向、透明背景的 PNG；页面会自动等比例缩放。
+
+Logo 尺寸由 [`src/App.css`](src/App.css) 中的 `.site-logo` 控制。如果彩色 Logo 在深色模式下不适合自动反色，可以同时修改深色模式中的 `.site-logo` 规则。
+
+### 修改网站名称
+
+在项目中搜索 `ZJE-Lens`，主要需要修改：
+
+- [`index.html`](index.html) 中浏览器标签页的 `<title>`；
+- [`src/App.tsx`](src/App.tsx) 中 Logo 的 `alt` 文本和 CSV 导出文件名；
+- 本 README 的标题与介绍。
+
+网站图标位于 [`public/favicon.svg`](public/favicon.svg)，也可以替换成自己团队的 favicon。
+
+修改完成后提交到 `main`，GitHub Actions 会自动重新部署，无需在 Azure Portal 中重新创建资源。
+
+## 环境变量
+
+| 名称 | 使用位置 | 说明 |
+| --- | --- | --- |
+| `VITE_USE_MOCK_API` | 前端构建 | `false` 时请求真实 `/api`；本地未设置时使用模拟数据 |
+| `SQL_CONNECTION_STRING` | Azure Functions | Azure SQL 连接字符串，只保存在 Azure 应用设置或本地未提交的配置文件中 |
+
+本地调试 Functions 时，可以复制示例配置：
+
+```bash
+cd api
+npm install
+cp local.settings.json.example local.settings.json
+```
+
+将自己的连接字符串填入 `local.settings.json`，安装 Azure Functions Core Tools v4 后运行：
+
+```bash
+npm run build
+npm start
+```
+
+`api/local.settings.json` 包含密码，不应提交到 GitHub。
+
+## 数据与安全说明
+
+- `localStorage` 只保存当前浏览器默认使用的姓名和成员 ID。
+- 器材状态、任务、借还记录和归还时间全部保存在 Azure SQL。
+- 借出、Kit 借出和批量归还使用数据库事务保证一致性。
+- 删除器材不会破坏历史：已有借还记录的器材会被拒绝删除。
+- 项目没有密码、OAuth 或管理员权限隔离，管理按钮对所有访问者可见。
+- 若团队规模扩大或网址需要公开传播，建议后续增加 Microsoft Entra ID、Static Web Apps 身份验证或独立的管理员权限。
+
+## 更新已经部署的网站
+
+日常修改代码后只需要：
+
+```bash
+git add .
+git commit -m "Describe the change"
+git push origin main
+```
+
+GitHub Actions 会自动完成安装依赖、构建 React、构建 Azure Functions 和发布。Azure SQL 中的真实数据不会因为前端重新部署而丢失。
+
+## License
+
+当前仓库未声明开源许可证。你可以 Fork 并用于自己的学习和小型团队内部部署；如果准备公开分发或用于商业项目，请先联系仓库维护者确认授权。
