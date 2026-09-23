@@ -1,8 +1,13 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&family=Noto+Serif+SC:wght@600;700&display=swap');
 
-:root { font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif; color:#37352f; background:#fff; font-synthesis:none; text-rendering:optimizeLegibility; }
+:root { color-scheme:light; font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif; color:#37352f; background:#fff; font-synthesis:none; text-rendering:optimizeLegibility; }
 * { box-sizing:border-box; }
 body { margin:0; min-width:320px; background:#fff; }
 button,input,textarea { font:inherit; }
 button { cursor:pointer; }
 button,a,label,input,select,textarea,[role="button"] { -webkit-tap-highlight-color:transparent; }
+
+@media (prefers-color-scheme:dark) {
+  :root { color-scheme:dark; color:#efefeb; background:#191918; }
+  body { background:#191918; }
+}

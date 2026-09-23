@@ -81,3 +81,52 @@ h1 { margin:0; color:#37352f; font-family:'Noto Serif SC',Georgia,serif; font-si
 
 @media (max-width:620px) { .records-page > .view-content { display:flex; min-height:0; flex:1 1 auto; flex-direction:column; }.records-page > .view-content > .summary { flex:none; }.records-page > .view-content > .history-table-wrap,.records-page > .view-content > .task-grid { min-height:0; flex:1 1 auto; overflow:auto; overscroll-behavior:contain; }.records-page > .view-content > .history-table-wrap { margin:0; border:1px solid #e9e9e7; scrollbar-width:auto; }.records-page > .view-content > .history-table-wrap .history-table th { position:sticky; z-index:1; top:0; }.records-page > .view-content > .history-table-wrap .history-table th:first-child,.records-page > .view-content > .history-table-wrap .history-table td:first-child { padding-left:13px; } }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; animation-duration:.01ms!important; animation-iteration-count:1!important; transition-duration:.01ms!important; } }
+
+/* 跟随系统深色模式，保留 Notion 风格的层次和克制对比。 */
+@media (prefers-color-scheme:dark) {
+  .app-shell,.identity-page { color:#efefeb; background:#191918; }
+  .site-logo { filter:invert(1) hue-rotate(180deg) brightness(1.08); }
+  header,.primary-nav,.personal-section-title { border-color:#383835; }
+  h1,.switch-identity-link:hover,.user-area button:hover,.header-popover button,.user-popover b,.primary-nav button.selected,.secondary-nav button:hover,.category-filters button.selected,.summary,.card-top h2,.personal-section-title h2,.history-table,.task-card h2,.task-details dd,.participants i,.task-equipment p,.kit-card h2,.form-title h2,.equipment-form label,.kit-form legend,.register-form label { color:#f0f0ec; }
+  .brand,.user-area,.user-area button,.switch-identity-link,.secondary-nav button,.category-filters button,.summary strong,.description,.borrow-details,.notice,.startup-notice,.management-note,.equipment-section-title,.task-edit,.task-details dt,.task-note,.participants>span,.task-equipment>span,.kit-heading,.equipment-heading,.identity-card>p { color:#b2b1ab; }
+  .identity-menu-button { background:#292927!important; }
+  .identity-menu-button span,.user-popover small,.primary-nav button,.record-tools span,.category,.loading,.empty,.personal-section-title span,.history-table th,.task-label,.participants em,.task-equipment small,.task-equipment em,.kit-equipment-list small,.kit-equipment-list p,.form-title button,.equipment-form label small { color:#8d8c86; }
+  .user-area .add-link,.user-area .more-link,.user-area .manage-link,.secondary-nav .record-export,.category-filters button { border-color:#41413e; color:#e5e5e0; background:#232321; }
+  .user-area .add-link:hover,.user-area .manage-link:hover,.secondary-nav .record-export:hover,.category-filters button:hover { border-color:#565651; color:#fff; background:#2d2d2a; }
+  .header-popover { border-color:#41413e; background:#232321; box-shadow:0 14px 38px rgba(0,0,0,.42); }
+  .header-popover button:hover,.secondary-nav button:hover,.category-filters button.selected,.summary strong,.equipment-section-title button:hover { background:#30302d; }
+  .primary-nav button.selected::after { background:#efefeb; }
+  .secondary-nav button.selected { color:#1d1d1b; background:#efefeb; }
+  .task-fab { color:#1d1d1b; background:#efefeb; box-shadow:0 9px 28px rgba(0,0,0,.44); }
+  .task-fab:hover { background:#fff; box-shadow:0 11px 32px rgba(0,0,0,.5); }
+  .equipment-card,.kit-card,.task-card { border-color:#383835; background:#222220; }
+  .equipment-card:hover { background:#272725; }
+  .card-icon { color:#454541; }
+  .borrow-details,.participants,.task-equipment { border-color:#393936; }
+  .card-action button,.task-actions button,.submit-equipment,.register-form button { border-color:#efefeb; color:#1d1d1b; background:#efefeb; }
+  .card-action button:hover,.task-actions button:hover,.submit-equipment:hover,.register-form button:hover { background:#fff; }
+  .card-action .return { border-color:#6f6f69; color:#fff; background:#6f6f69; }
+  .card-action .edit,.task-actions .joined,.task-actions .archive-task { border-color:#41413e; color:#c1c0ba; background:#2b2b29; }
+  .card-action .edit:hover { color:#fff; background:#343431; }
+  .task-actions .delete-task { border-color:#ff5c60; color:#ff7b7e; background:#222220; }
+  .card-action span { color:#777771; }
+  .notice,.startup-notice,.management-note { border-color:#3b3b38; background:#252523; }
+  .error { border-color:#5b3436; color:#ff8a8d; background:#2d2021; }
+  .startup-dot { background:#9b9a94; }
+  .history-table-wrap { border-color:#383835; }
+  .history-table th { color:#aaa9a3; background:#292927; }
+  .history-table td { border-color:#383835; }
+  .participants i,.kit-items span { color:#d2d1cb; background:#30302d; }
+  .equipment-form { border-color:#454541; background:#232321; box-shadow:0 22px 70px rgba(0,0,0,.5); }
+  .dialog-backdrop { background:rgba(0,0,0,.62); }
+  .equipment-form input,.equipment-form select,.equipment-form textarea,.register-form input { border-color:#4b4b47; color:#efefeb; background:#1d1d1c; }
+  .equipment-form input::placeholder,.equipment-form textarea::placeholder,.register-form input::placeholder { color:#74746f; }
+  .equipment-form input:focus,.equipment-form select:focus,.equipment-form textarea:focus,.register-form input:focus { border-color:#4c9fe8; outline-color:#4c9fe8; box-shadow:0 0 0 1px #4c9fe8; }
+  .register-form,.kit-equipment-list>label { border-color:#383835; }
+}
+
+@media (prefers-color-scheme:dark) and (max-width:620px) {
+  .primary-nav { border-color:rgba(78,78,73,.92); background:rgba(35,35,33,.94); box-shadow:0 10px 30px rgba(0,0,0,.42); }
+  .primary-nav button.selected { color:#1d1d1b; background:#efefeb; }
+  .records-page>.history-table-wrap,.records-page>.view-content>.history-table-wrap { border-color:#383835; }
+}
