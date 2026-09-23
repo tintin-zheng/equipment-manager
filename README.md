@@ -7,6 +7,9 @@
 > [!IMPORTANT]
 > 这是一个低摩擦的熟人团队工具。API 默认允许匿名访问，知道网址的人可以注册姓名并进行操作。它不适合公开互联网服务、互不信任的用户群体或需要严格权限审计的高价值资产管理场景。
 
+> [!TIP]
+> **学生可以先申请 [GitHub Student Developer Pack](https://education.github.com/pack/)。** GitHub Education 中的 Microsoft Azure 学生权益目前提供 25 项以上 Azure 云服务的免费使用资格和 **100 美元 Azure 额度**，且无需信用卡，适合用来学习并部署本项目。Azure 权益要求学生年满 18 岁；具体资格、额度、有效期和可用地区可能调整，请以申请页面显示的最新条款为准。
+
 ## 界面预览
 
 ### 桌面端器材管理
@@ -114,6 +117,35 @@ npm run build --prefix api
 ## 部署到自己的 Azure
 
 下面是一套从空白 Azure 账号开始的完整流程。Azure Portal 的栏目名称可能随界面更新略有变化，但需要填写的内容不变。
+
+### 学生部署前：申请 GitHub Education 与 Azure 学生额度
+
+如果你是在校学生，建议先完成学生认证，再创建 Azure 资源：
+
+1. 打开 [GitHub Student Developer Pack](https://education.github.com/pack/)，登录自己的 GitHub 账号。
+2. 按页面要求提交学生身份认证。通常可以使用学校邮箱、学生证或其他在读证明；审核方式以 GitHub Education 当前页面为准。
+3. 认证通过后，在 Student Developer Pack 中找到 **Microsoft Azure** 权益并点击领取。
+4. 按提示登录或创建 Microsoft 账号，激活 Azure 学生订阅。Azure 权益目前要求申请人年满 18 岁。
+5. 进入 [Azure Portal](https://portal.azure.com/) 后，在“订阅”页面确认能够看到学生订阅，再继续创建本项目需要的资源。
+
+当前 GitHub Education 页面展示的 Azure 学生权益包括：
+
+- 25 项以上 Microsoft Azure 云服务的免费使用资格；
+- 100 美元 Azure credit；
+- 申请时无需绑定信用卡；
+- Azure 云服务与相关学习资源。
+
+本项目的 Azure Static Web Apps 可以使用 Free 计划，Azure Functions 由 Static Web Apps 集成托管，Azure SQL 则可以优先选择免费额度或低配 Serverless。对于十几人规模、访问频率不高的团队，学生额度通常足以支持学习和早期使用，但这不代表所有资源永久免费。
+
+使用学生订阅时请注意：
+
+- 创建 SQL Database 和 Static Web App 时，确认“订阅”选择的是已经激活的学生订阅；
+- 在 Azure Cost Management 中查看余额和资源消耗，并按需设置预算提醒；
+- Serverless SQL 自动暂停可以节省额度，但长时间无人访问后的第一次打开会有冷启动等待；
+- 额度用完或权益到期后，资源可能暂停。只有主动升级到付费订阅后才会继续产生实际费用；升级前请先确认 Azure 页面显示的计费规则；
+- 不要把 Azure 部署令牌、SQL 密码或连接字符串提交到 GitHub。
+
+也可以直接查看 [Azure for Students 官方页面](https://azure.microsoft.com/free/students/) 获取最新说明。GitHub Education 和 Azure 的优惠内容可能随时间、地区及个人资格变化，README 中的数字仅对应当前页面展示的信息。
 
 ### 1. Fork 仓库并准备代码
 
