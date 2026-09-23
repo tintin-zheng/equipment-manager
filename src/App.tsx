@@ -25,8 +25,8 @@ const settleViewportAfterKeyboard = async () => { if (document.activeElement ins
 
 function App() {
   const [equipment, setEquipment] = useState<Equipment[]>([]); const [kits, setKits] = useState<Kit[]>([]); const [history, setHistory] = useState<BorrowRecord[]>([]); const [tasks, setTasks] = useState<TeamTask[]>([]); const [currentUser, setCurrentUser] = useState<Member | null>(readStoredUser); const [view, setView] = useState<View>('all'); const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all'); const [loading, setLoading] = useState(true); const [startupMessage, setStartupMessage] = useState(''); const [error, setError] = useState(''); const [notice, setNotice] = useState(''); const [adding, setAdding] = useState(false); const [addingKit, setAddingKit] = useState(false); const [editingEquipment, setEditingEquipment] = useState<Equipment | null>(null); const [editingKit, setEditingKit] = useState<Kit | null>(null); const [managing, setManaging] = useState(false); const [taskManaging, setTaskManaging] = useState(false); const [taskEditor, setTaskEditor] = useState<TeamTask | 'new' | null>(null)
-  async function loadData(user?: Member | null, attempt = 0) {
-    if (attempt === 0) { setLoading(true); setError(''); setStartupMessage('') }
+  async function loadData(user?: Member | null, attempt = 0, quiet = false) {
+    if (attempt === 0 && !quiet) { setLoading(true); setError(''); setStartupMessage('') }
     try {
       const storedMemberId = user?.id ?? Number(localStorage.getItem('currentUserId'))
       if (view === 'my-tasks') {
@@ -60,9 +60,9 @@ function App() {
       }
       setStartupMessage('')
     } catch {
-      if (attempt < 11) { setStartupMessage('系统正在启动，首次加载可能需要约一分钟，请稍候，页面会自动重试。'); await new Promise((resolve) => window.setTimeout(resolve, 5000)); return loadData(user, attempt + 1) }
+      if (attempt < 11) { setStartupMessage('系统正在启动，首次加载可能需要约一分钟，请稍候，页面会自动重试。'); await new Promise((resolve) => window.setTimeout(resolve, 5000)); return loadData(user, attempt + 1, quiet) }
       setStartupMessage(''); setError('系统启动时间较长，请刷新页面后重试。')
-    } finally { if (attempt === 0) setLoading(false) }
+    } finally { if (attempt === 0 && !quiet) setLoading(false) }
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { void loadData(currentUser) }, [view])
@@ -72,14 +72,15 @@ function App() {
   function switchUser() { localStorage.removeItem('currentUserId'); localStorage.removeItem('currentUserName'); setCurrentUser(null); setView('all'); setManaging(false); setTaskManaging(false) }
   function changeView(next: View) { setView(next); setManaging(false); setTaskManaging(false); if (!['all', 'available', 'borrowed'].includes(next)) setCategoryFilter('all') }
   function toggleManagement() { const next = !managing; setManaging(next); if (next) setView('all') }
-  async function borrow(item: Equipment) { if (!currentUser) return; try { await borrowEquipment(item.id, currentUser.id); message(`已借出：${item.name}`); await loadData(currentUser) } catch (reason) { message(reason instanceof Error ? reason.message : '借出失败，请重试') } }
-  async function returnItem(item: Equipment) { if (!currentUser || !item.activeBorrow) return; try { await returnEquipment(item.activeBorrow.id, currentUser.id); message(`已归还：${item.name}`); await loadData(currentUser) } catch (reason) { message(reason instanceof Error ? reason.message : '归还失败，请重试') } }
+  async function refreshDataInPlace() { const scrollPosition = window.scrollY; await loadData(currentUser, 0, true); window.requestAnimationFrame(() => window.scrollTo({ top: scrollPosition, left: 0, behavior: 'instant' })) }
+  async function borrow(item: Equipment) { if (!currentUser) return; try { await borrowEquipment(item.id, currentUser.id); message(`已借出：${item.name}`); await refreshDataInPlace() } catch (reason) { message(reason instanceof Error ? reason.message : '借出失败，请重试') } }
+  async function returnItem(item: Equipment) { if (!currentUser || !item.activeBorrow) return; try { await returnEquipment(item.activeBorrow.id, currentUser.id); message(`已归还：${item.name}`); await refreshDataInPlace() } catch (reason) { message(reason instanceof Error ? reason.message : '归还失败，请重试') } }
   async function saveEquipment(input: EquipmentInput) { try { const item = await addEquipment(input); setAdding(false); message(`已录入：${item.name}`); await loadData(currentUser) } catch (reason) { throw reason instanceof Error ? reason : new Error('录入失败，请重试') } }
   async function saveEquipmentEdit(input: EquipmentInput) { if (!editingEquipment) return; try { const item = await updateEquipment(editingEquipment.id, input); setEditingEquipment(null); message(`已更新：${item.name}`); await loadData(currentUser) } catch (reason) { throw reason instanceof Error ? reason : new Error('更新失败，请重试') } }
   async function saveKit(input: KitInput) { try { const kit = await createKit(input); setAddingKit(false); message(`已录入 Kit：${kit.name}`); await loadData(currentUser) } catch (reason) { throw reason instanceof Error ? reason : new Error('录入 Kit 失败，请重试') } }
   async function saveKitEdit(input: KitInput) { if (!editingKit) return; try { const kit = await updateKit(editingKit.id, input); setEditingKit(null); message(`已更新 Kit：${kit.name}`); await loadData(currentUser) } catch (reason) { throw reason instanceof Error ? reason : new Error('更新 Kit 失败，请重试') } }
-  async function borrowWholeKit(kit: Kit) { if (!currentUser) return; try { await borrowKit(kit.id, currentUser.id); message(`已借出 Kit：${kit.name}`); await loadData(currentUser) } catch (reason) { message(reason instanceof Error ? reason.message : '借出 Kit 失败，请重试') } }
-  async function returnWholeKit(kit: Kit) { if (!currentUser || !kit.activeBorrow) return; try { await returnKit(kit.activeBorrow.id, currentUser.id); message(`已归还 Kit：${kit.name}`); await loadData(currentUser) } catch (reason) { message(reason instanceof Error ? reason.message : '归还 Kit 失败，请重试') } }
+  async function borrowWholeKit(kit: Kit) { if (!currentUser) return; try { await borrowKit(kit.id, currentUser.id); message(`已借出 Kit：${kit.name}`); await refreshDataInPlace() } catch (reason) { message(reason instanceof Error ? reason.message : '借出 Kit 失败，请重试') } }
+  async function returnWholeKit(kit: Kit) { if (!currentUser || !kit.activeBorrow) return; try { await returnKit(kit.activeBorrow.id, currentUser.id); message(`已归还 Kit：${kit.name}`); await refreshDataInPlace() } catch (reason) { message(reason instanceof Error ? reason.message : '归还 Kit 失败，请重试') } }
   async function removeEquipment(item: Equipment) { if (!window.confirm(`确定删除“${item.name}”吗？此操作无法撤销。`)) return; try { await deleteEquipment(item.id); message(`已删除：${item.name}`); await loadData(currentUser) } catch (reason) { message(reason instanceof Error ? reason.message : '删除失败，请重试') } }
   async function removeKit(kit: Kit) { if (!window.confirm(`确定删除 Kit“${kit.name}”吗？此操作无法撤销。`)) return; try { await deleteKit(kit.id); message(`已删除 Kit：${kit.name}`); await loadData(currentUser) } catch (reason) { message(reason instanceof Error ? reason.message : '删除 Kit 失败，请重试') } }
   async function archive(task: TeamTask) { if (!window.confirm(`确定归档“${task.title}”吗？归档后会移到“任务记录”。`)) return; try { await archiveTask(task.id); message(`已归档：${task.title}`); await loadData(currentUser) } catch (reason) { message(reason instanceof Error ? reason.message : '归档失败，请重试') } }
