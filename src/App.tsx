@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { addEquipment, archiveTask, borrowEquipment, borrowKit, createKit, createMember, createTask, deleteEquipment, deleteKit, deleteTask, getBorrowHistory, getEquipment, getKits, getMemberBorrowHistory, getMembers, getMyBorrowings, getTasks, joinTask, leaveTask, returnAllBorrowings, returnEquipment, returnKit, updateEquipment, updateKit, updateTask } from './api'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { addEquipment, archiveTask, borrowEquipment, borrowKit, createKit, createMember, createTask, deleteEquipment, deleteKit, deleteTask, getBorrowHistory, getEquipment, getKits, getMemberBorrowHistory, getMyBorrowings, getTasks, joinTask, leaveTask, returnAllBorrowings, returnEquipment, returnKit, updateEquipment, updateKit, updateTask } from './api'
 import type { BorrowRecord, Equipment, EquipmentInput, Kit, KitInput, Member, TaskInput, TeamTask } from './types'
 import logo from './assets/zje-lens-logo.png'
 import './App.css'
@@ -9,6 +9,7 @@ type PrimaryTab = 'equipment' | 'tasks' | 'records' | 'mine'
 type CategoryFilter = 'all' | 'camera' | 'lens' | 'accessory'
 const primaryTabs: { key: PrimaryTab; label: string; view: View }[] = [{ key: 'equipment', label: '器材', view: 'all' }, { key: 'tasks', label: '任务', view: 'tasks' }, { key: 'records', label: '记录', view: 'history' }, { key: 'mine', label: '我的', view: 'mine' }]
 const primaryForView = (view: View): PrimaryTab => ['all', 'available', 'borrowed'].includes(view) ? 'equipment' : view === 'tasks' ? 'tasks' : ['history', 'task-records'].includes(view) ? 'records' : 'mine'
+const dataSourceForView = (view: View) => ['all', 'available', 'borrowed'].includes(view) ? 'equipment' : view
 const categoryFilters: { key: CategoryFilter; label: string }[] = [{ key: 'all', label: '全部' }, { key: 'camera', label: '相机' }, { key: 'lens', label: '镜头' }, { key: 'accessory', label: '配件' }]
 const categoryOrder = ['相机', '镜头', '麦克风', '存储卡', '提词器', '三脚架', '电池', '滤镜', '监看器', '读卡器', '其他']
 const categoryRank = (category: string) => { const index = categoryOrder.indexOf(category); return index < 0 ? categoryOrder.length : index }
@@ -32,54 +33,53 @@ function PrimaryNavIcon({ tab }: { tab: PrimaryTab }) {
 
 function App() {
   const [equipment, setEquipment] = useState<Equipment[]>([]); const [kits, setKits] = useState<Kit[]>([]); const [history, setHistory] = useState<BorrowRecord[]>([]); const [tasks, setTasks] = useState<TeamTask[]>([]); const [currentUser, setCurrentUser] = useState<Member | null>(readStoredUser); const [view, setView] = useState<View>('all'); const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all'); const [loading, setLoading] = useState(true); const [startupMessage, setStartupMessage] = useState(''); const [error, setError] = useState(''); const [notice, setNotice] = useState(''); const [adding, setAdding] = useState(false); const [addingKit, setAddingKit] = useState(false); const [editingEquipment, setEditingEquipment] = useState<Equipment | null>(null); const [editingKit, setEditingKit] = useState<Kit | null>(null); const [managing, setManaging] = useState(false); const [taskManaging, setTaskManaging] = useState(false); const [taskEditor, setTaskEditor] = useState<TeamTask | 'new' | null>(null); const [returningAll, setReturningAll] = useState(false)
-  async function loadData(user?: Member | null, attempt = 0, quiet = false) {
-    if (attempt === 0 && !quiet) { setLoading(true); setError(''); setStartupMessage('') }
+  const latestLoadRef = useRef(0)
+  const dataSource = dataSourceForView(view)
+  async function loadData(user: Member | null, attempt = 0, quiet = false, targetView = view, loadId = ++latestLoadRef.current) {
+    if (!user) { if (loadId === latestLoadRef.current) setLoading(false); return }
+    if (attempt === 0 && !quiet && loadId === latestLoadRef.current) { setLoading(true); setError(''); setStartupMessage('') }
     try {
-      const storedMemberId = user?.id ?? Number(localStorage.getItem('currentUserId'))
-      if (view === 'my-tasks') {
-        const [allMembers, activeTasks, archivedTasks] = await Promise.all([getMembers(), getTasks(false), getTasks(true)])
-        const saved = user ?? allMembers.find((member) => member.id === storedMemberId) ?? null
-        setCurrentUser(saved)
-        setTasks(saved ? [...activeTasks, ...archivedTasks].filter((task) => task.participants.some((participant) => participant.memberId === saved.id)) : [])
-        setEquipment([]); setKits([])
-      } else if (['tasks', 'task-records'].includes(view)) {
-        const archived = view === 'task-records'
-        const [allMembers, taskList] = await Promise.all([getMembers(), getTasks(archived)])
-        const saved = user ?? allMembers.find((member) => member.id === storedMemberId) ?? null
-        setCurrentUser(saved); setTasks(taskList); setEquipment([]); setKits([])
-      } else if (view === 'history') {
-        const [allMembers, records] = await Promise.all([getMembers(), getBorrowHistory()])
-        const saved = user ?? allMembers.find((member) => member.id === storedMemberId) ?? null
-        setCurrentUser(saved); setHistory(records); setEquipment([]); setKits([])
-      } else if (view === 'mine') {
-        const [allMembers, myEquipment, allKits, records] = await Promise.all([
-          getMembers(),
-          storedMemberId > 0 ? getMyBorrowings(storedMemberId) : Promise.resolve([]),
+      if (targetView === 'my-tasks') {
+        const [activeTasks, archivedTasks] = await Promise.all([getTasks(false), getTasks(true)])
+        if (loadId !== latestLoadRef.current) return
+        setTasks([...activeTasks, ...archivedTasks].filter((task) => task.participants.some((participant) => participant.memberId === user.id)))
+      } else if (['tasks', 'task-records'].includes(targetView)) {
+        const taskList = await getTasks(targetView === 'task-records')
+        if (loadId !== latestLoadRef.current) return
+        setTasks(taskList)
+      } else if (targetView === 'history') {
+        const records = await getBorrowHistory()
+        if (loadId !== latestLoadRef.current) return
+        setHistory(records)
+      } else if (targetView === 'mine') {
+        const [myEquipment, allKits, records] = await Promise.all([
+          getMyBorrowings(user.id),
           getKits(),
-          storedMemberId > 0 ? getMemberBorrowHistory(storedMemberId) : Promise.resolve([]),
+          getMemberBorrowHistory(user.id),
         ])
-        const saved = user ?? allMembers.find((member) => member.id === storedMemberId) ?? null
-        setCurrentUser(saved); setEquipment(myEquipment); setKits(allKits); setHistory(records.filter((record) => Boolean(record.returnTime)))
+        if (loadId !== latestLoadRef.current) return
+        setEquipment(myEquipment); setKits(allKits); setHistory(records.filter((record) => Boolean(record.returnTime)))
       } else {
-        const [allMembers, allEquipment, allKits] = await Promise.all([getMembers(), getEquipment(), getKits()])
-        const saved = user ?? allMembers.find((member) => member.id === storedMemberId) ?? null
-        setCurrentUser(saved); setEquipment(allEquipment); setKits(allKits)
+        const [allEquipment, allKits] = await Promise.all([getEquipment(), getKits()])
+        if (loadId !== latestLoadRef.current) return
+        setEquipment(allEquipment); setKits(allKits)
       }
       setStartupMessage('')
     } catch {
-      if (attempt < 11) { setStartupMessage('系统正在启动，首次加载可能需要约一分钟，请稍候，页面会自动重试。'); await new Promise((resolve) => window.setTimeout(resolve, 5000)); return loadData(user, attempt + 1, quiet) }
+      if (loadId !== latestLoadRef.current) return
+      if (attempt < 11) { setStartupMessage('系统正在启动，首次加载可能需要约一分钟，请稍候，页面会自动重试。'); await new Promise((resolve) => window.setTimeout(resolve, 5000)); return loadData(user, attempt + 1, quiet, targetView, loadId) }
       setStartupMessage(''); setError('系统启动时间较长，请刷新页面后重试。')
-    } finally { if (attempt === 0 && !quiet) setLoading(false) }
+    } finally { if (attempt === 0 && !quiet && loadId === latestLoadRef.current) setLoading(false) }
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { void loadData(currentUser) }, [view])
+  useEffect(() => { void loadData(currentUser, 0, false, view) }, [dataSource, currentUser?.id])
   const displayed = useMemo(() => equipment.filter((item) => { const statusMatches = view === 'available' ? item.availableQuantity > 0 : view === 'borrowed' ? item.activeBorrowCount > 0 : true; const categoryMatches = categoryFilter === 'all' || categoryFilter === 'camera' && item.category === '相机' || categoryFilter === 'lens' && item.category === '镜头' || categoryFilter === 'accessory' && item.category !== '相机' && item.category !== '镜头'; return statusMatches && categoryMatches }).sort((a, b) => view === 'mine' ? 0 : categoryRank(a.category) - categoryRank(b.category) || a.name.localeCompare(b.name, 'zh-CN')), [equipment, view, categoryFilter])
   function message(value: string) { setNotice(value); window.setTimeout(() => setNotice(''), 3200) }
   function chooseUser(member: Member) { localStorage.setItem('currentUserId', String(member.id)); localStorage.setItem('currentUserName', member.name); setCurrentUser(member); message(`你好，${member.name}！`) }
   function switchUser() { localStorage.removeItem('currentUserId'); localStorage.removeItem('currentUserName'); setCurrentUser(null); setView('all'); setManaging(false); setTaskManaging(false) }
   function changeView(next: View) { setView(next); setManaging(false); setTaskManaging(false); if (!['all', 'available', 'borrowed'].includes(next)) setCategoryFilter('all') }
   function toggleManagement() { const next = !managing; setManaging(next); if (next) setView('all') }
-  async function refreshDataInPlace() { const scrollPosition = window.scrollY; await loadData(currentUser, 0, true); window.requestAnimationFrame(() => window.scrollTo({ top: scrollPosition, left: 0, behavior: 'instant' })) }
+  async function refreshDataInPlace() { const scrollPosition = window.scrollY; await loadData(currentUser, 0, true, view); window.requestAnimationFrame(() => window.scrollTo({ top: scrollPosition, left: 0, behavior: 'instant' })) }
   async function borrow(item: Equipment) { if (!currentUser) return; try { await borrowEquipment(item.id, currentUser.id); await refreshDataInPlace() } catch (reason) { message(reason instanceof Error ? reason.message : '借出失败，请重试') } }
   async function returnItem(item: Equipment) { if (!currentUser || !item.activeBorrow) return; try { await returnEquipment(item.activeBorrow.id, currentUser.id); await refreshDataInPlace() } catch (reason) { message(reason instanceof Error ? reason.message : '归还失败，请重试') } }
   async function saveEquipment(input: EquipmentInput) { try { const item = await addEquipment(input); setAdding(false); message(`已录入：${item.name}`); await loadData(currentUser) } catch (reason) { throw reason instanceof Error ? reason : new Error('录入失败，请重试') } }
