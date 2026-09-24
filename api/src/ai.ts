@@ -62,7 +62,29 @@ const borrowCommandSchema = {
   },
 }
 
-const aiConfig = () => {
+type AiConfig = {
+  provider: 'deepseek' | 'azure'
+  model: string
+  url: string
+  headers: Record<string, string>
+}
+
+const aiConfig = (): AiConfig => {
+  // DeepSeek 使用 OpenAI 兼容接口。Key 仅存在 Functions 的服务端配置中，
+  // 浏览器只会调用本站的 /api/borrow-command，永远不会拿到真实 Key。
+  const deepSeekKey = process.env.DEEPSEEK_API_KEY?.trim()
+  if (deepSeekKey) {
+    const endpoint = (process.env.DEEPSEEK_API_ENDPOINT?.trim() || 'https://api.deepseek.com').replace(/\/$/, '')
+    const url = /\/chat\/completions(?:\?|$)/.test(endpoint) ? endpoint : `${endpoint}/chat/completions`
+    return {
+      provider: 'deepseek',
+      model: process.env.DEEPSEEK_MODEL?.trim() || 'deepseek-chat',
+      url,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deepSeekKey}` },
+    }
+  }
+
+  // 保留 Azure OpenAI 兼容配置，方便其他部署者继续使用 Azure 模型。
   const endpoint = (process.env.AZURE_AI_ENDPOINT ?? process.env.AZURE_OPENAI_ENDPOINT)?.trim().replace(/\/$/, '')
   const apiKey = (process.env.AZURE_AI_API_KEY ?? process.env.AZURE_OPENAI_API_KEY)?.trim()
   const deployment = (process.env.AZURE_AI_DEPLOYMENT ?? process.env.AZURE_OPENAI_DEPLOYMENT)?.trim()
@@ -71,7 +93,12 @@ const aiConfig = () => {
   const url = endpoint.includes('/chat/completions')
     ? endpoint
     : `${endpoint}/openai/deployments/${encodeURIComponent(deployment)}/chat/completions?api-version=${encodeURIComponent(apiVersion)}`
-  return { apiKey, deployment, url }
+  return {
+    provider: 'azure',
+    model: deployment,
+    url,
+    headers: { 'Content-Type': 'application/json', 'api-key': apiKey },
+  }
 }
 
 const responseText = (data: unknown) => {
@@ -81,12 +108,11 @@ const responseText = (data: unknown) => {
   throw new Error('AI_EMPTY_RESPONSE')
 }
 
-const callModel = async (body: Record<string, unknown>) => {
-  const config = aiConfig()
+const callModel = async (body: Record<string, unknown>, config = aiConfig()): Promise<unknown> => {
   const response = await fetch(config.url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'api-key': config.apiKey },
-    body: JSON.stringify({ model: config.deployment, ...body }),
+    headers: config.headers,
+    body: JSON.stringify({ model: config.model, ...body }),
     signal: AbortSignal.timeout(20_000),
   })
   if (!response.ok) {
@@ -94,7 +120,7 @@ const callModel = async (body: Record<string, unknown>) => {
     // Azure 上不同模型代际接受的输出长度参数不同，按错误提示自动兼容一次。
     if (response.status === 400 && 'max_completion_tokens' in body && /max_completion_tokens|unsupported parameter|unknown parameter/i.test(detail)) {
       const { max_completion_tokens: tokenLimit, ...compatibleBody } = body
-      return callModel({ ...compatibleBody, max_tokens: tokenLimit })
+      return callModel({ ...compatibleBody, max_tokens: tokenLimit }, config)
     }
     throw new Error(`AI_REQUEST_FAILED:${response.status}:${detail.slice(0, 300)}`)
   }
@@ -102,25 +128,52 @@ const callModel = async (body: Record<string, unknown>) => {
 }
 
 export async function parseBorrowCommand(text: string, equipment: EquipmentInventory[], kits: KitInventory[]): Promise<ParsedBorrowCommand> {
-  const system = `你是摄影器材借用指令解析器。只从提供的库存中选择器材或 Kit，不得编造 ID。理解中文口语、品牌简称、型号写法、阿拉伯数字和中文数量。用户只说类别时：若该类别只有一个合理候选可选择，否则放入 unresolvedItems。默认数量为 1。Kit 始终整套借出，不要把 Kit 展开为单件。只返回符合 JSON Schema 的结果。\n\n单件库存：${JSON.stringify(equipment)}\nKit 库存：${JSON.stringify(kits)}`
+  const config = aiConfig()
+  const system = `你是摄影器材借用指令解析器。只从提供的库存中选择器材或 Kit，不得编造 ID。理解中文口语、品牌简称、型号写法、阿拉伯数字和中文数量。用户只说类别时：若该类别只有一个合理候选可选择，否则放入 unresolvedItems。默认数量为 1。Kit 始终整套借出，不要把 Kit 展开为单件。只返回 JSON 对象，不要使用 Markdown。格式必须是：{"equipment":[{"equipmentId":1,"quantity":1,"confidence":0.95}],"kits":[{"kitId":1,"confidence":0.95}],"unresolvedItems":["无法确定的原话"]}。没有匹配项时对应数组必须为空。\n\n单件库存：${JSON.stringify(equipment)}\nKit 库存：${JSON.stringify(kits)}`
   const commonBody = {
     messages: [
       { role: 'system', content: system },
       { role: 'user', content: text },
     ],
-    max_completion_tokens: 500,
+    temperature: 0,
+    ...(config.provider === 'deepseek' ? { max_tokens: 500 } : { max_completion_tokens: 500 }),
   }
 
+  // DeepSeek 支持 JSON mode；Azure 优先使用约束更严格的 JSON Schema。
+  // 如果具体模型不支持某种 response_format，则逐级降级，但仍会在下方校验所有 ID 和数量。
+  const formats: ({ type: string; json_schema?: typeof borrowCommandSchema } | undefined)[] = config.provider === 'deepseek'
+    ? [{ type: 'json_object' }, undefined]
+    : [{ type: 'json_schema', json_schema: borrowCommandSchema }, { type: 'json_object' }, undefined]
   let data: unknown
-  try {
-    data = await callModel({ ...commonBody, response_format: { type: 'json_schema', json_schema: borrowCommandSchema } })
-  } catch (error) {
-    // 部分轻量部署只支持 JSON mode；在模型不接受 JSON Schema 时自动降级。
-    if (!(error instanceof Error) || !error.message.startsWith('AI_REQUEST_FAILED:400:')) throw error
-    data = await callModel({ ...commonBody, response_format: { type: 'json_object' } })
+  let lastError: unknown
+  for (const responseFormat of formats) {
+    try {
+      data = await callModel(responseFormat ? { ...commonBody, response_format: responseFormat } : commonBody, config)
+      lastError = undefined
+      break
+    } catch (error) {
+      lastError = error
+      if (!(error instanceof Error) || !error.message.startsWith('AI_REQUEST_FAILED:400:')) throw error
+    }
   }
+  if (lastError || !data) throw lastError ?? new Error('AI_EMPTY_RESPONSE')
 
-  const parsed = JSON.parse(responseText(data)) as Partial<ParsedBorrowCommand>
+  const raw = responseText(data).trim()
+  let parsedValue: unknown
+  try {
+    parsedValue = JSON.parse(raw)
+  } catch {
+    // 无 response_format 的兼容模式可能包裹 Markdown 代码块，只提取最外层 JSON 对象。
+    const jsonObject = raw.match(/\{[\s\S]*\}/)?.[0]
+    if (!jsonObject) throw new Error('AI_INVALID_RESPONSE')
+    try {
+      parsedValue = JSON.parse(jsonObject)
+    } catch {
+      throw new Error('AI_INVALID_RESPONSE')
+    }
+  }
+  if (!parsedValue || typeof parsedValue !== 'object' || Array.isArray(parsedValue)) throw new Error('AI_INVALID_RESPONSE')
+  const parsed = parsedValue as Partial<ParsedBorrowCommand>
   const equipmentIds = new Set(equipment.map((item) => item.id))
   const kitIds = new Set(kits.map((kit) => kit.id))
   const merged = new Map<number, { equipmentId: number; quantity: number; confidence: number }>()

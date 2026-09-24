@@ -229,21 +229,22 @@ Server=tcp:<服务器名>.database.windows.net,1433;Initial Catalog=<数据库�
 
 不配置本节时，器材、Kit、任务、普通借还和记录功能仍然可以正常使用；只有语音识别与 AI 文字解析会显示“尚未完成 Azure 配置”。
 
-AI 快速借用使用两个独立的 Azure 能力：
+AI 快速借用使用两个独立的能力：
 
 1. **Azure AI Speech**：把普通话语音转换成文字。浏览器只会获得约 10 分钟有效的短期令牌，不会接触 Speech 密钥。
-2. **Azure OpenAI 兼容模型部署**：根据当前数据库里的器材和 Kit 清单，把文字转换成结构化候选项。建议选择支持 JSON 输出的低成本轻量模型部署。
+2. **DeepSeek API（推荐）或 Azure OpenAI 兼容模型**：根据当前数据库里的器材和 Kit 清单，把文字转换成结构化候选项。模型只生成待确认清单，真正的库存检查和借出事务仍由后端与数据库完成。
 
-在 Azure Portal 中创建 Speech 资源后，记录它的 Key 和 Region；再在 Azure AI Foundry 或 Azure OpenAI 资源中部署一个聊天模型，记录 Endpoint、Key 和部署名称。随后进入 Static Web App 的应用设置，加入：
+在 Azure Portal 中创建 Speech 资源后，记录它的 Key 和 Region。在 DeepSeek 开放平台充值并创建 API Key（不要放入代码、GitHub 或聊天截图）。随后进入 Static Web App 的应用设置，加入：
 
 | 名称 | 示例或说明 |
 | --- | --- |
 | `AZURE_SPEECH_KEY` | Speech 资源的密钥，只存 Azure 配置 |
 | `AZURE_SPEECH_REGION` | 资源区域，例如 `eastasia` |
-| `AZURE_AI_ENDPOINT` | `https://<资源名>.openai.azure.com` |
-| `AZURE_AI_API_KEY` | AI 资源的密钥，只存 Azure 配置 |
-| `AZURE_AI_DEPLOYMENT` | 你创建的模型部署名称，不是模型显示名称 |
-| `AZURE_OPENAI_API_VERSION` | 默认可使用 `2024-10-21`，也可按所选模型文档覆盖 |
+| `DEEPSEEK_API_KEY` | DeepSeek API Key，只存 Azure 配置 |
+| `DEEPSEEK_MODEL` | 推荐 `deepseek-chat` |
+| `DEEPSEEK_API_ENDPOINT` | 可选；默认 `https://api.deepseek.com` |
+
+如果已经拥有 Azure OpenAI 配额，也可以不设置 `DEEPSEEK_API_KEY`，继续使用 `AZURE_AI_ENDPOINT`、`AZURE_AI_API_KEY`、`AZURE_AI_DEPLOYMENT` 和可选的 `AZURE_OPENAI_API_VERSION`。两套配置同时存在时优先使用 DeepSeek。
 
 保存并应用设置后重新部署或重启应用。打开“器材”页面右下角的麦克风按钮，依次测试：
 
@@ -252,7 +253,7 @@ AI 快速借用使用两个独立的 Azure 能力：
 - 调整数量或删除误识别项目，再点击“确认借出”；
 - 故意请求超过库存的数量，确认系统会阻止整批操作。
 
-模型和 Speech 都按 Azure 账号及区域的实际定价计费。建议在 Azure Cost Management 中建立小额预算提醒，并在 AI 资源中设置较低配额。由于本项目没有登录系统，若将网址公开传播，匿名访问者可能消耗 AI 配额；它更适合只在熟人团队内分享。
+DeepSeek 模型按其开放平台公布的 Token 单价计费，Speech 按 Azure 账号及区域的实际定价计费。建议先少量充值并在对应平台设置余额提醒。由于本项目没有登录系统，若将网址公开传播，匿名访问者可能消耗 AI 额度；它更适合只在熟人团队内分享。
 
 ### 6. 配置 GitHub 部署令牌
 
@@ -360,10 +361,13 @@ Logo 尺寸由 [`src/App.css`](src/App.css) 中的 `.site-logo` 控制。如果�
 | `SQL_CONNECTION_STRING` | Azure Functions | Azure SQL 连接字符串，只保存在 Azure 应用设置或本地未提交的配置文件中 |
 | `AZURE_SPEECH_KEY` | Azure Functions | 可选，Speech 密钥；不会发送到前端 |
 | `AZURE_SPEECH_REGION` | Azure Functions | 可选，Speech 资源所在区域 |
-| `AZURE_AI_ENDPOINT` | Azure Functions | 可选，Azure OpenAI 兼容端点 |
-| `AZURE_AI_API_KEY` | Azure Functions | 可选，AI 资源密钥；不会发送到前端 |
-| `AZURE_AI_DEPLOYMENT` | Azure Functions | 可选，聊天模型的部署名称 |
-| `AZURE_OPENAI_API_VERSION` | Azure Functions | 可选，默认 `2024-10-21` |
+| `DEEPSEEK_API_KEY` | Azure Functions | 可选，推荐的 AI 文字解析密钥；不会发送到前端 |
+| `DEEPSEEK_MODEL` | Azure Functions | 可选，默认 `deepseek-chat` |
+| `DEEPSEEK_API_ENDPOINT` | Azure Functions | 可选，默认 `https://api.deepseek.com` |
+| `AZURE_AI_ENDPOINT` | Azure Functions | 可选，未配置 DeepSeek 时使用的 Azure OpenAI 兼容端点 |
+| `AZURE_AI_API_KEY` | Azure Functions | 可选，Azure AI 资源密钥；不会发送到前端 |
+| `AZURE_AI_DEPLOYMENT` | Azure Functions | 可选，Azure 聊天模型的部署名称 |
+| `AZURE_OPENAI_API_VERSION` | Azure Functions | 可选，Azure 模型默认 `2024-10-21` |
 
 本地调试 Functions 时，可以复制示例配置：
 

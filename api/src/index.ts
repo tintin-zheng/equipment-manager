@@ -15,9 +15,9 @@ const serverError = (context: InvocationContext, error: unknown) => {
   if (/invalid object name '(tasks|task_participants)'|invalid column name 'archived_at'/i.test(detail)) return json({ message: '任务数据表尚未完成配置，请执行最新的任务数据库脚本' }, 500)
   if (/invalid object name '(kits|kit_items|kit_borrow_records)'|invalid column name 'kit_borrow_record_id'/i.test(detail)) return json({ message: 'Kit 数据表尚未创建，请先执行 database/kits.sql' }, 500)
   if (/invalid column name 'quantity'|UX_borrow_records_active_equipment/i.test(detail)) return json({ message: '器材数量功能尚未完成数据库配置，请执行 database/equipment-quantity.sql' }, 500)
-  if (detail === 'AI_NOT_CONFIGURED') return json({ message: 'AI 器材助手尚未完成 Azure 配置，仍可继续手动借出器材' }, 503)
+  if (detail === 'AI_NOT_CONFIGURED') return json({ message: 'AI 器材助手尚未配置模型 API，仍可继续手动借出器材' }, 503)
   if (detail === 'SPEECH_NOT_CONFIGURED') return json({ message: '语音识别尚未完成 Azure 配置，可以先使用文字输入' }, 503)
-  if (/^AI_(REQUEST_FAILED|EMPTY_RESPONSE)|^SPEECH_(TOKEN_FAILED|REGION_INVALID)/.test(detail)) return json({ message: 'AI 服务暂时无法处理请求，请稍后重试或使用手动借出' }, 502)
+  if (/^AI_(REQUEST_FAILED|EMPTY_RESPONSE|INVALID_RESPONSE)|^SPEECH_(TOKEN_FAILED|REGION_INVALID)/.test(detail)) return json({ message: 'AI 服务暂时无法处理请求，请稍后重试或使用手动借出' }, 502)
   return json({ message: '服务器暂时无法处理请求' }, 500)
 }
 

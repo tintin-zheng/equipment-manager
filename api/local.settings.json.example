@@ -6,9 +6,8 @@
     "SQL_CONNECTION_STRING": "Server=tcp:<server>.database.windows.net,1433;Initial Catalog=zje_lens;Persist Security Info=False;User ID=<user>;Password=<password>;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;",
     "AZURE_SPEECH_KEY": "<speech-key>",
     "AZURE_SPEECH_REGION": "<region>",
-    "AZURE_AI_ENDPOINT": "https://<resource>.openai.azure.com",
-    "AZURE_AI_API_KEY": "<ai-key>",
-    "AZURE_AI_DEPLOYMENT": "<deployment-name>",
-    "AZURE_OPENAI_API_VERSION": "2024-10-21"
+    "DEEPSEEK_API_KEY": "<deepseek-api-key>",
+    "DEEPSEEK_MODEL": "deepseek-chat",
+    "DEEPSEEK_API_ENDPOINT": "https://api.deepseek.com"
   }
 }
