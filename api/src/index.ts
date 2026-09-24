@@ -17,7 +17,11 @@ const serverError = (context: InvocationContext, error: unknown) => {
   if (/invalid column name 'quantity'|UX_borrow_records_active_equipment/i.test(detail)) return json({ message: '器材数量功能尚未完成数据库配置，请执行 database/equipment-quantity.sql' }, 500)
   if (detail === 'AI_NOT_CONFIGURED') return json({ message: 'AI 器材助手尚未配置模型 API，仍可继续手动借出器材' }, 503)
   if (detail === 'SPEECH_NOT_CONFIGURED') return json({ message: '语音识别尚未完成 Azure 配置，可以先使用文字输入' }, 503)
-  if (/^AI_(REQUEST_FAILED|EMPTY_RESPONSE|INVALID_RESPONSE)|^SPEECH_(TOKEN_FAILED|REGION_INVALID)/.test(detail)) return json({ message: 'AI 服务暂时无法处理请求，请稍后重试或使用手动借出' }, 502)
+  if (/^AI_REQUEST_FAILED:401:/.test(detail)) return json({ message: 'AI 服务的 API Key 无法验证，请联系管理员检查配置' }, 502)
+  if (/^AI_REQUEST_FAILED:402:/.test(detail)) return json({ message: 'AI 服务余额不足，请联系管理员充值后重试' }, 502)
+  if (/^AI_REQUEST_FAILED:429:/.test(detail)) return json({ message: 'AI 服务当前请求较多，请稍后再试' }, 503)
+  if (/^AI_(EMPTY_RESPONSE|INVALID_RESPONSE)/.test(detail)) return json({ message: 'AI 没有返回完整清单，请换一种说法后重试' }, 502)
+  if (/^AI_REQUEST_FAILED:/.test(detail) || /^SPEECH_(TOKEN_FAILED|REGION_INVALID)/.test(detail)) return json({ message: 'AI 服务暂时无法处理请求，请稍后重试或使用手动借出' }, 502)
   return json({ message: '服务器暂时无法处理请求' }, 500)
 }
 

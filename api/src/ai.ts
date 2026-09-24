@@ -108,7 +108,9 @@ const responseText = (data: unknown) => {
   throw new Error('AI_EMPTY_RESPONSE')
 }
 
-const callModel = async (body: Record<string, unknown>, config = aiConfig()): Promise<unknown> => {
+const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds))
+
+const callModel = async (body: Record<string, unknown>, config = aiConfig(), attempt = 0): Promise<unknown> => {
   const response = await fetch(config.url, {
     method: 'POST',
     headers: config.headers,
@@ -122,9 +124,33 @@ const callModel = async (body: Record<string, unknown>, config = aiConfig()): Pr
       const { max_completion_tokens: tokenLimit, ...compatibleBody } = body
       return callModel({ ...compatibleBody, max_tokens: tokenLimit }, config)
     }
+    // 短暂限流或上游故障通常会很快恢复；有限重试避免用户重复点击。
+    if (attempt < 2 && [429, 500, 502, 503, 504].includes(response.status)) {
+      await wait(400 * (attempt + 1))
+      return callModel(body, config, attempt + 1)
+    }
     throw new Error(`AI_REQUEST_FAILED:${response.status}:${detail.slice(0, 300)}`)
   }
   return response.json()
+}
+
+const parseModelResponse = (data: unknown): Partial<ParsedBorrowCommand> => {
+  const raw = responseText(data).trim()
+  let parsedValue: unknown
+  try {
+    parsedValue = JSON.parse(raw)
+  } catch {
+    // 无 response_format 的兼容模式可能包裹 Markdown 代码块，只提取最外层 JSON 对象。
+    const jsonObject = raw.match(/\{[\s\S]*\}/)?.[0]
+    if (!jsonObject) throw new Error('AI_INVALID_RESPONSE')
+    try {
+      parsedValue = JSON.parse(jsonObject)
+    } catch {
+      throw new Error('AI_INVALID_RESPONSE')
+    }
+  }
+  if (!parsedValue || typeof parsedValue !== 'object' || Array.isArray(parsedValue)) throw new Error('AI_INVALID_RESPONSE')
+  return parsedValue as Partial<ParsedBorrowCommand>
 }
 
 export async function parseBorrowCommand(text: string, equipment: EquipmentInventory[], kits: KitInventory[]): Promise<ParsedBorrowCommand> {
@@ -136,7 +162,8 @@ export async function parseBorrowCommand(text: string, equipment: EquipmentInven
       { role: 'user', content: text },
     ],
     temperature: 0,
-    ...(config.provider === 'deepseek' ? { max_tokens: 500 } : { max_completion_tokens: 500 }),
+    // 部分轻量模型会把内部推理也计入输出上限；复杂的多器材指令需要留出余量。
+    ...(config.provider === 'deepseek' ? { max_tokens: 1200 } : { max_completion_tokens: 800 }),
   }
 
   // DeepSeek 支持 JSON mode；Azure 优先使用约束更严格的 JSON Schema。
@@ -158,22 +185,19 @@ export async function parseBorrowCommand(text: string, equipment: EquipmentInven
   }
   if (lastError || !data) throw lastError ?? new Error('AI_EMPTY_RESPONSE')
 
-  const raw = responseText(data).trim()
-  let parsedValue: unknown
+  let parsed: Partial<ParsedBorrowCommand>
   try {
-    parsedValue = JSON.parse(raw)
-  } catch {
-    // 无 response_format 的兼容模式可能包裹 Markdown 代码块，只提取最外层 JSON 对象。
-    const jsonObject = raw.match(/\{[\s\S]*\}/)?.[0]
-    if (!jsonObject) throw new Error('AI_INVALID_RESPONSE')
-    try {
-      parsedValue = JSON.parse(jsonObject)
-    } catch {
-      throw new Error('AI_INVALID_RESPONSE')
-    }
+    parsed = parseModelResponse(data)
+  } catch (error) {
+    if (!(error instanceof Error) || !['AI_EMPTY_RESPONSE', 'AI_INVALID_RESPONSE'].includes(error.message)) throw error
+    // 模型偶尔会截断 JSON；自动再生成一次，不让用户手动重复提交。
+    const retryData = await callModel({
+      ...commonBody,
+      messages: [...commonBody.messages, { role: 'user', content: '请重新生成，并且只输出一个完整、有效的 JSON 对象。' }],
+      response_format: { type: 'json_object' },
+    }, config)
+    parsed = parseModelResponse(retryData)
   }
-  if (!parsedValue || typeof parsedValue !== 'object' || Array.isArray(parsedValue)) throw new Error('AI_INVALID_RESPONSE')
-  const parsed = parsedValue as Partial<ParsedBorrowCommand>
   const equipmentIds = new Set(equipment.map((item) => item.id))
   const kitIds = new Set(kits.map((kit) => kit.id))
   const merged = new Map<number, { equipmentId: number; quantity: number; confidence: number }>()
