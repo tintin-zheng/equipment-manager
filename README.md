@@ -29,6 +29,7 @@
 - 姓名即身份：第一次输入 2–6 个中文汉字，浏览器通过 `localStorage` 记住当前成员。
 - 器材库存：支持类别、数量、备注、可借数量和借用人。
 - Kit：将多件器材组成一套，整套借出和归还。
+- AI 快速借用：用中文语音或文字描述器材与数量，先生成可编辑清单，确认后一次性借出。
 - 借还记录：永久保留借出时间、归还时间和借用人，可导出 CSV。
 - 团队任务：发布任务、补充时间与地点、参与或取消参与、归档和删除。
 - 任务器材：参与者名下正在借用的器材会自动显示在相应任务中。
@@ -42,18 +43,20 @@ flowchart LR
   A[手机或电脑浏览器] -->|HTTPS| B[Azure Static Web Apps<br/>React 前端]
   B -->|/api · JSON| C[Azure Functions<br/>TypeScript / Node.js]
   C -->|加密 SQL 连接| D[(Azure SQL Database)]
+  C -.可选.-> F[Azure AI Speech]
+  C -.可选.-> G[Azure AI 模型]
   E[GitHub main 分支] -->|GitHub Actions| B
 ```
 
 各部分职责如下：
 
 1. **React 前端**负责页面显示和交互。`localStorage` 只保存当前浏览器使用的成员 ID 与姓名。
-2. **Azure Functions**提供 `/api/*` REST API，检查输入并处理借出、归还、任务和 Kit 操作。
+2. **Azure Functions**提供 `/api/*` REST API，检查输入并处理借出、归还、任务、Kit 和 AI 指令解析。
 3. **Azure SQL Database**是唯一的业务数据源，保存成员、器材、库存、任务和全部历史记录。
 4. **Azure Static Web Apps**托管前端，并将同一域名下的 `/api` 请求转发给项目中的 Functions。
 5. **GitHub Actions**在每次推送到 `main` 后自动构建并部署前端与 API。
 
-借出操作不会相信浏览器显示的“可借”状态。后端会在 SQL 事务中重新检查实时库存，确认仍有库存后才写入借还记录。
+AI 助手只负责把自然语言转换成候选清单，不会听到一句话就直接改数据库。用户确认后，后端才会在一个 SQL 事务中重新检查全部实时库存；任意一项库存不足，整次批量借出都会回滚，避免只借出一半。
 
 ## 技术栈
 
@@ -62,6 +65,8 @@ flowchart LR
 | 前端 | React 19、TypeScript、Vite |
 | 后端 | Azure Functions v4、TypeScript、Node.js |
 | 数据库 | Azure SQL Database、`mssql` |
+| 语音识别（可选） | Azure AI Speech SDK |
+| 文字理解（可选） | Azure OpenAI 兼容的 Azure AI 模型部署 |
 | 托管 | Azure Static Web Apps |
 | 自动部署 | GitHub Actions |
 
@@ -72,6 +77,7 @@ flowchart LR
 ├── src/
 │   ├── App.tsx                  # 页面、交互与主要组件
 │   ├── App.css                  # 响应式布局和深色模式
+│   ├── VoiceBorrowDialog.tsx    # AI 语音/文字快速借用界面
 │   ├── api.ts                   # 前端唯一的 API 入口
 │   ├── mockApi.ts               # 本地演示用模拟数据
 │   ├── types.ts                 # 前端数据类型
@@ -79,6 +85,7 @@ flowchart LR
 │       └── zje-lens-logo.png    # 团队 Logo
 ├── api/
 │   ├── src/index.ts             # Azure Functions 路由与业务逻辑
+│   ├── src/ai.ts                # AI 指令解析与 Speech 短期令牌
 │   ├── src/database.ts          # Azure SQL 连接池
 │   └── local.settings.json.example
 ├── database/
@@ -104,7 +111,7 @@ npm run dev
 
 打开 `http://localhost:5173`。
 
-本地开发默认使用 `src/mockApi.ts`，不需要 Azure 账号或数据库，可以直接体验注册身份、借出、归还、Kit 和任务功能。模拟借还数据在刷新页面后会重置，浏览器记住的身份仍会保留。
+本地开发默认使用 `src/mockApi.ts`，不需要 Azure 账号或数据库，可以直接体验注册身份、借出、归还、Kit、任务和快速借用的文字清单。模拟借还数据在刷新页面后会重置，浏览器记住的身份仍会保留。语音输入必须连接本地 Functions 并配置 Azure Speech；没有配置时可以继续使用文字输入或普通借出按钮。
 
 提交前可以运行：
 
@@ -218,7 +225,36 @@ Server=tcp:<服务器名>.database.windows.net,1433;Initial Catalog=<数据库�
 
 保存后要确认设置已经应用成功。Functions 运行时会从这里读取连接字符串。
 
-### 5. 配置 GitHub 部署令牌
+### 5. 配置 AI 快速借用（可选）
+
+不配置本节时，器材、Kit、任务、普通借还和记录功能仍然可以正常使用；只有语音识别与 AI 文字解析会显示“尚未完成 Azure 配置”。
+
+AI 快速借用使用两个独立的 Azure 能力：
+
+1. **Azure AI Speech**：把普通话语音转换成文字。浏览器只会获得约 10 分钟有效的短期令牌，不会接触 Speech 密钥。
+2. **Azure OpenAI 兼容模型部署**：根据当前数据库里的器材和 Kit 清单，把文字转换成结构化候选项。建议选择支持 JSON 输出的低成本轻量模型部署。
+
+在 Azure Portal 中创建 Speech 资源后，记录它的 Key 和 Region；再在 Azure AI Foundry 或 Azure OpenAI 资源中部署一个聊天模型，记录 Endpoint、Key 和部署名称。随后进入 Static Web App 的应用设置，加入：
+
+| 名称 | 示例或说明 |
+| --- | --- |
+| `AZURE_SPEECH_KEY` | Speech 资源的密钥，只存 Azure 配置 |
+| `AZURE_SPEECH_REGION` | 资源区域，例如 `eastasia` |
+| `AZURE_AI_ENDPOINT` | `https://<资源名>.openai.azure.com` |
+| `AZURE_AI_API_KEY` | AI 资源的密钥，只存 Azure 配置 |
+| `AZURE_AI_DEPLOYMENT` | 你创建的模型部署名称，不是模型显示名称 |
+| `AZURE_OPENAI_API_VERSION` | 默认可使用 `2024-10-21`，也可按所选模型文档覆盖 |
+
+保存并应用设置后重新部署或重启应用。打开“器材”页面右下角的麦克风按钮，依次测试：
+
+- 文字：`借一台 Sony A7 IV 和两块电池`；
+- 语音：允许浏览器使用麦克风，说完后等待清单出现；
+- 调整数量或删除误识别项目，再点击“确认借出”；
+- 故意请求超过库存的数量，确认系统会阻止整批操作。
+
+模型和 Speech 都按 Azure 账号及区域的实际定价计费。建议在 Azure Cost Management 中建立小额预算提醒，并在 AI 资源中设置较低配额。由于本项目没有登录系统，若将网址公开传播，匿名访问者可能消耗 AI 配额；它更适合只在熟人团队内分享。
+
+### 6. 配置 GitHub 部署令牌
 
 1. 在 Azure Static Web App 概览页选择 **Manage deployment token / 管理部署令牌**。
 2. 复制部署令牌。
@@ -233,7 +269,7 @@ Value: <刚才复制的部署令牌>
 
 令牌是敏感信息，不要放进普通变量、代码或聊天截图。
 
-### 6. 检查自动部署配置
+### 7. 检查自动部署配置
 
 仓库中的 GitHub Actions 工作流已经配置好三个路径：
 
@@ -261,7 +297,7 @@ git push origin main
 
 然后进入 GitHub 仓库的 **Actions** 页面，等待 `Azure Static Web Apps CI/CD` 显示绿色成功标记。
 
-### 7. 验证部署
+### 8. 验证部署
 
 Azure 会提供类似下面的地址：
 
@@ -322,6 +358,12 @@ Logo 尺寸由 [`src/App.css`](src/App.css) 中的 `.site-logo` 控制。如果�
 | --- | --- | --- |
 | `VITE_USE_MOCK_API` | 前端构建 | `false` 时请求真实 `/api`；本地未设置时使用模拟数据 |
 | `SQL_CONNECTION_STRING` | Azure Functions | Azure SQL 连接字符串，只保存在 Azure 应用设置或本地未提交的配置文件中 |
+| `AZURE_SPEECH_KEY` | Azure Functions | 可选，Speech 密钥；不会发送到前端 |
+| `AZURE_SPEECH_REGION` | Azure Functions | 可选，Speech 资源所在区域 |
+| `AZURE_AI_ENDPOINT` | Azure Functions | 可选，Azure OpenAI 兼容端点 |
+| `AZURE_AI_API_KEY` | Azure Functions | 可选，AI 资源密钥；不会发送到前端 |
+| `AZURE_AI_DEPLOYMENT` | Azure Functions | 可选，聊天模型的部署名称 |
+| `AZURE_OPENAI_API_VERSION` | Azure Functions | 可选，默认 `2024-10-21` |
 
 本地调试 Functions 时，可以复制示例配置：
 
@@ -331,14 +373,16 @@ npm install
 cp local.settings.json.example local.settings.json
 ```
 
-将自己的连接字符串填入 `local.settings.json`，安装 Azure Functions Core Tools v4 后运行：
+将自己的连接字符串和需要调试的 AI 配置填入 `local.settings.json`，安装 Azure Functions Core Tools v4 后运行：
 
 ```bash
 npm run build
 npm start
 ```
 
-`api/local.settings.json` 包含密码，不应提交到 GitHub。
+若要让 Vite 前端调用本地 Functions，可在另一个终端使用 `VITE_USE_MOCK_API=false npm run dev`。项目已经把开发环境中的 `/api` 代理到 Functions 默认的 `http://localhost:7071`。只验证文字清单与批量借出的页面交互时，保持默认 Mock 模式最简单。
+
+`api/local.settings.json` 包含密码和服务密钥，不应提交到 GitHub。项目只提交不含真实凭据的 `api/local.settings.json.example`。
 
 ## 数据与安全说明
 

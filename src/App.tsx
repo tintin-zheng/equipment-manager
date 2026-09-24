@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { addEquipment, archiveTask, borrowEquipment, borrowKit, createKit, createMember, createTask, deleteEquipment, deleteKit, deleteTask, getBorrowHistory, getEquipment, getKits, getMemberBorrowHistory, getMyBorrowings, getTasks, joinTask, leaveTask, returnAllBorrowings, returnEquipment, returnKit, updateEquipment, updateKit, updateTask } from './api'
-import type { BorrowRecord, Equipment, EquipmentInput, Kit, KitInput, Member, TaskInput, TeamTask } from './types'
+import type { BatchBorrowResult, BorrowRecord, Equipment, EquipmentInput, Kit, KitInput, Member, TaskInput, TeamTask } from './types'
+import VoiceBorrowDialog from './VoiceBorrowDialog'
 import logo from './assets/zje-lens-logo.png'
 import './App.css'
 
@@ -31,8 +32,10 @@ function PrimaryNavIcon({ tab }: { tab: PrimaryTab }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5" /><path d="M5.5 19.5c.6-3.3 3-5 6.5-5s5.9 1.7 6.5 5" /></svg>
 }
 
+function VoiceIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="3" width="8" height="12" rx="4" /><path d="M5.5 11.5v.5a6.5 6.5 0 0 0 13 0v-.5M12 18.5V22M8.5 22h7" /></svg> }
+
 function App() {
-  const [equipment, setEquipment] = useState<Equipment[]>([]); const [kits, setKits] = useState<Kit[]>([]); const [history, setHistory] = useState<BorrowRecord[]>([]); const [tasks, setTasks] = useState<TeamTask[]>([]); const [currentUser, setCurrentUser] = useState<Member | null>(readStoredUser); const [view, setView] = useState<View>('all'); const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all'); const [loading, setLoading] = useState(true); const [startupMessage, setStartupMessage] = useState(''); const [error, setError] = useState(''); const [notice, setNotice] = useState(''); const [adding, setAdding] = useState(false); const [addingKit, setAddingKit] = useState(false); const [editingEquipment, setEditingEquipment] = useState<Equipment | null>(null); const [editingKit, setEditingKit] = useState<Kit | null>(null); const [managing, setManaging] = useState(false); const [taskManaging, setTaskManaging] = useState(false); const [taskEditor, setTaskEditor] = useState<TeamTask | 'new' | null>(null); const [returningAll, setReturningAll] = useState(false)
+  const [equipment, setEquipment] = useState<Equipment[]>([]); const [kits, setKits] = useState<Kit[]>([]); const [history, setHistory] = useState<BorrowRecord[]>([]); const [tasks, setTasks] = useState<TeamTask[]>([]); const [currentUser, setCurrentUser] = useState<Member | null>(readStoredUser); const [view, setView] = useState<View>('all'); const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all'); const [loading, setLoading] = useState(true); const [startupMessage, setStartupMessage] = useState(''); const [error, setError] = useState(''); const [notice, setNotice] = useState(''); const [adding, setAdding] = useState(false); const [addingKit, setAddingKit] = useState(false); const [editingEquipment, setEditingEquipment] = useState<Equipment | null>(null); const [editingKit, setEditingKit] = useState<Kit | null>(null); const [managing, setManaging] = useState(false); const [taskManaging, setTaskManaging] = useState(false); const [taskEditor, setTaskEditor] = useState<TeamTask | 'new' | null>(null); const [returningAll, setReturningAll] = useState(false); const [voiceBorrowOpen, setVoiceBorrowOpen] = useState(false)
   const latestLoadRef = useRef(0)
   const dataSource = dataSourceForView(view)
   async function loadData(user: Member | null, attempt = 0, quiet = false, targetView = view, loadId = ++latestLoadRef.current) {
@@ -81,6 +84,7 @@ function App() {
   function toggleManagement() { const next = !managing; setManaging(next); if (next) setView('all') }
   async function refreshDataInPlace() { const scrollPosition = window.scrollY; await loadData(currentUser, 0, true, view); window.requestAnimationFrame(() => window.scrollTo({ top: scrollPosition, left: 0, behavior: 'instant' })) }
   async function borrow(item: Equipment) { if (!currentUser) return; try { await borrowEquipment(item.id, currentUser.id); await refreshDataInPlace() } catch (reason) { message(reason instanceof Error ? reason.message : '借出失败，请重试') } }
+  async function finishBatchBorrow(result: BatchBorrowResult) { const total = result.borrowedEquipmentCount + result.borrowedKitCount; message(`已完成快速借用，共 ${total} 项`); await refreshDataInPlace() }
   async function returnItem(item: Equipment) { if (!currentUser || !item.activeBorrow) return; try { await returnEquipment(item.activeBorrow.id, currentUser.id); await refreshDataInPlace() } catch (reason) { message(reason instanceof Error ? reason.message : '归还失败，请重试') } }
   async function saveEquipment(input: EquipmentInput) { try { const item = await addEquipment(input); setAdding(false); message(`已录入：${item.name}`); await loadData(currentUser) } catch (reason) { throw reason instanceof Error ? reason : new Error('录入失败，请重试') } }
   async function saveEquipmentEdit(input: EquipmentInput) { if (!editingEquipment) return; try { const item = await updateEquipment(editingEquipment.id, input); setEditingEquipment(null); message(`已更新：${item.name}`); await loadData(currentUser) } catch (reason) { throw reason instanceof Error ? reason : new Error('更新失败，请重试') } }
@@ -113,6 +117,7 @@ function App() {
     </header>
     <nav className="primary-nav" aria-label="主导航">{primaryTabs.map((item) => <button key={item.key} className={primary === item.key ? 'selected' : ''} onClick={() => changeView(item.view)}><span className="primary-nav-icon"><PrimaryNavIcon tab={item.key} /></span><span>{item.label}</span></button>)}</nav>
     {view === 'tasks' && <button className="task-fab" onClick={() => setTaskEditor('new')} aria-label="发布新任务" />}
+    {primary === 'equipment' && !managing && <button className="voice-fab" onClick={() => setVoiceBorrowOpen(true)} aria-label="AI 快速借用"><VoiceIcon /><span>快速借用</span></button>}
     {secondaryTabs.length > 0 && <div className={`secondary-nav${primary === 'records' ? ' record-nav' : ''}`} aria-label="页面分类">{secondaryTabs.map((item) => <button key={item.key} className={view === item.key ? 'selected' : ''} onClick={() => changeView(item.key)}>{item.label}</button>)}{primary === 'records' && <div className="record-tools"><span>{loading ? '—' : view === 'history' ? history.length : tasks.length} 条</span><button className="record-export" disabled={loading || (view === 'history' ? history.length === 0 : tasks.length === 0)} onClick={view === 'history' ? exportBorrowHistory : exportTaskHistory}>导出 CSV</button></div>}</div>}
     {primary === 'equipment' && <div className="category-filters" aria-label="器材类别筛选">{categoryFilters.map((item) => <button key={item.key} className={categoryFilter === item.key ? 'selected' : ''} onClick={() => setCategoryFilter(item.key)}>{item.label}</button>)}</div>}
     {notice && <div className="notice" role="status">{notice}<button onClick={() => setNotice('')} aria-label="关闭提示">×</button></div>}
@@ -128,6 +133,7 @@ function App() {
     {editingEquipment && <AddEquipmentDialog item={editingEquipment} onClose={() => setEditingEquipment(null)} onSave={saveEquipmentEdit} />}
     {editingKit && <AddKitDialog kit={editingKit} equipment={equipment} onClose={() => setEditingKit(null)} onSave={saveKitEdit} />}
     {taskEditor && <TaskDialog task={taskEditor === 'new' ? undefined : taskEditor} onClose={() => setTaskEditor(null)} onSave={saveTask} />}
+    {voiceBorrowOpen && currentUser && <VoiceBorrowDialog currentUser={currentUser} onClose={() => setVoiceBorrowOpen(false)} onBorrowed={finishBatchBorrow} />}
   </main>
 }
 function EquipmentPage({ view, displayed, kits, currentUser, categoryFilter, history, loading, managing, returningAll, onAddEquipment, onAddKit, onBorrow, onReturn, onReturnAll, onBorrowKit, onReturnKit, onEdit, onDelete, onEditKit, onDeleteKit }: { view: View; displayed: Equipment[]; kits: Kit[]; currentUser: Member | null; categoryFilter: CategoryFilter; history: BorrowRecord[]; loading: boolean; managing: boolean; returningAll: boolean; onAddEquipment: () => void; onAddKit: () => void; onBorrow: (item: Equipment) => void; onReturn: (item: Equipment) => void; onReturnAll: () => void; onBorrowKit: (kit: Kit) => void; onReturnKit: (kit: Kit) => void; onEdit: (item: Equipment) => void; onDelete: (item: Equipment) => void; onEditKit: (kit: Kit) => void; onDeleteKit: (kit: Kit) => void }) {

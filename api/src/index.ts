@@ -1,5 +1,6 @@
 import { app, HttpResponseInit, InvocationContext } from '@azure/functions'
 import { getPool, sql } from './database.js'
+import { getSpeechToken, parseBorrowCommand } from './ai.js'
 
 const json = (body: unknown, status = 200): HttpResponseInit => ({ status, jsonBody: body })
 const badRequest = (message: string) => json({ message }, 400)
@@ -14,6 +15,9 @@ const serverError = (context: InvocationContext, error: unknown) => {
   if (/invalid object name '(tasks|task_participants)'|invalid column name 'archived_at'/i.test(detail)) return json({ message: '任务数据表尚未完成配置，请执行最新的任务数据库脚本' }, 500)
   if (/invalid object name '(kits|kit_items|kit_borrow_records)'|invalid column name 'kit_borrow_record_id'/i.test(detail)) return json({ message: 'Kit 数据表尚未创建，请先执行 database/kits.sql' }, 500)
   if (/invalid column name 'quantity'|UX_borrow_records_active_equipment/i.test(detail)) return json({ message: '器材数量功能尚未完成数据库配置，请执行 database/equipment-quantity.sql' }, 500)
+  if (detail === 'AI_NOT_CONFIGURED') return json({ message: 'AI 器材助手尚未完成 Azure 配置，仍可继续手动借出器材' }, 503)
+  if (detail === 'SPEECH_NOT_CONFIGURED') return json({ message: '语音识别尚未完成 Azure 配置，可以先使用文字输入' }, 503)
+  if (/^AI_(REQUEST_FAILED|EMPTY_RESPONSE)|^SPEECH_(TOKEN_FAILED|REGION_INVALID)/.test(detail)) return json({ message: 'AI 服务暂时无法处理请求，请稍后重试或使用手动借出' }, 502)
   return json({ message: '服务器暂时无法处理请求' }, 500)
 }
 
@@ -64,6 +68,99 @@ app.http('borrow-records', {
     }
   },
 })
+
+app.http('speech-token', { methods: ['POST'], authLevel: 'anonymous', route: 'speech-token', handler: async (_request, context) => {
+  try { return json(await getSpeechToken()) } catch (error) { return serverError(context, error) }
+} })
+
+app.http('borrow-command', { methods: ['POST'], authLevel: 'anonymous', route: 'borrow-command', handler: async (request, context) => {
+  try {
+    const { text } = await request.json() as { text?: string }
+    const command = text?.trim()
+    if (!command || command.length > 300) return badRequest('请使用 1 至 300 个字符描述需要借用的器材')
+    const db = await getPool()
+    const [equipmentResult, kitResult, kitItemResult] = await Promise.all([
+      db.request().query('SELECT e.id, e.name, e.category, e.quantity-COUNT(br.id) AS availableQuantity FROM equipment e LEFT JOIN borrow_records br ON br.equipment_id=e.id AND br.return_time IS NULL GROUP BY e.id, e.name, e.category, e.quantity ORDER BY e.id'),
+      db.request().query('SELECT k.id, k.name, CASE WHEN EXISTS (SELECT 1 FROM kit_borrow_records br WHERE br.kit_id=k.id AND br.return_time IS NULL) THEN 1 ELSE 0 END AS isBorrowed FROM kits k ORDER BY k.id'),
+      db.request().query('SELECT ki.kit_id AS kitId, e.id AS equipmentId, e.quantity-COUNT(br.id) AS availableQuantity FROM kit_items ki JOIN equipment e ON e.id=ki.equipment_id LEFT JOIN borrow_records br ON br.equipment_id=e.id AND br.return_time IS NULL GROUP BY ki.kit_id, e.id, e.quantity'),
+    ])
+    const equipmentInventory = equipmentResult.recordset.map((item) => ({ id: Number(item.id), name: String(item.name), category: String(item.category), availableQuantity: Number(item.availableQuantity) }))
+    const kitInventory = kitResult.recordset.map((kit) => { const items = kitItemResult.recordset.filter((item) => Number(item.kitId) === Number(kit.id)); return { id: Number(kit.id), name: String(kit.name), itemCount: items.length, available: !kit.isBorrowed && items.length > 0 && items.every((item) => Number(item.availableQuantity) > 0) } })
+    const parsed = await parseBorrowCommand(command, equipmentInventory, kitInventory)
+    return json({
+      transcript: command,
+      equipment: parsed.equipment.flatMap((entry) => { const item = equipmentInventory.find((candidate) => candidate.id === entry.equipmentId); return item ? [{ equipmentId: item.id, name: item.name, category: item.category, quantity: entry.quantity, availableQuantity: item.availableQuantity, confidence: entry.confidence }] : [] }),
+      kits: parsed.kits.flatMap((entry) => { const kit = kitInventory.find((candidate) => candidate.id === entry.kitId); return kit ? [{ kitId: kit.id, name: kit.name, itemCount: kit.itemCount, available: kit.available, confidence: entry.confidence }] : [] }),
+      unresolvedItems: parsed.unresolvedItems,
+    })
+  } catch (error) { return serverError(context, error) }
+} })
+
+// 语音和文字助手最终都调用此接口。所有器材与 Kit 在一个可串行化事务中统一核验和借出。
+app.http('borrow-batch', { methods: ['POST'], authLevel: 'anonymous', route: 'borrow-batch', handler: async (request, context) => {
+  try {
+    const body = await request.json() as { memberId?: number; items?: { equipmentId?: number; quantity?: number }[]; kitIds?: number[] }
+    if (!Number.isInteger(body.memberId) || Number(body.memberId) < 1) return badRequest('memberId 必须是正整数')
+    const rawItems = Array.isArray(body.items) ? body.items : []
+    const rawKitIds = Array.isArray(body.kitIds) ? body.kitIds : []
+    if (rawItems.length > 20 || rawKitIds.length > 10) return badRequest('一次最多借用 20 类单件器材和 10 个 Kit')
+    if (!rawItems.every((item) => Number.isInteger(item.equipmentId) && Number.isInteger(item.quantity) && Number(item.quantity) >= 1 && Number(item.quantity) <= 20)) return badRequest('器材编号或数量无效')
+    if (!rawKitIds.every((id) => Number.isInteger(id) && id > 0)) return badRequest('Kit 编号无效')
+    const itemMap = new Map<number, number>()
+    for (const item of rawItems) itemMap.set(Number(item.equipmentId), (itemMap.get(Number(item.equipmentId)) ?? 0) + Number(item.quantity))
+    const kitIds = [...new Set(rawKitIds.map(Number))].sort((a, b) => a - b)
+    const items = [...itemMap].map(([equipmentId, quantity]) => ({ equipmentId, quantity })).sort((a, b) => a.equipmentId - b.equipmentId)
+    if (!items.length && !kitIds.length) return badRequest('请至少选择一件器材或一个 Kit')
+    if (items.some((item) => item.quantity > 20)) return badRequest('同一种器材一次最多借用 20 件')
+    if (items.reduce((sum, item) => sum + item.quantity, 0) > 50) return badRequest('一次最多借用 50 件单件器材')
+
+    const db = await getPool()
+    const transaction = new sql.Transaction(db)
+    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE)
+    try {
+      const member = await new sql.Request(transaction).input('memberId', sql.Int, body.memberId).query('SELECT id FROM members WHERE id=@memberId')
+      if (!member.recordset[0]) { await transaction.rollback(); return json({ message: '成员不存在' }, 404) }
+
+      const demand = new Map<number, number>(items.map((item) => [item.equipmentId, item.quantity]))
+      const selectedKits: { id: number; name: string; equipmentIds: number[] }[] = []
+      for (const kitId of kitIds) {
+        const kit = await new sql.Request(transaction).input('kitId', sql.Int, kitId).query('SELECT id, name FROM kits WITH (UPDLOCK, HOLDLOCK) WHERE id=@kitId')
+        if (!kit.recordset[0]) { await transaction.rollback(); return json({ message: `Kit #${kitId} 不存在` }, 404) }
+        const active = await new sql.Request(transaction).input('kitId', sql.Int, kitId).query('SELECT id FROM kit_borrow_records WITH (UPDLOCK, HOLDLOCK) WHERE kit_id=@kitId AND return_time IS NULL')
+        if (active.recordset[0]) { await transaction.rollback(); return json({ message: `Kit“${kit.recordset[0].name}”已经被借出` }, 409) }
+        const kitItems = await new sql.Request(transaction).input('kitId', sql.Int, kitId).query('SELECT equipment_id AS equipmentId FROM kit_items WITH (HOLDLOCK) WHERE kit_id=@kitId ORDER BY equipment_id')
+        if (!kitItems.recordset.length) { await transaction.rollback(); return json({ message: `Kit“${kit.recordset[0].name}”没有包含器材` }, 409) }
+        const equipmentIds = kitItems.recordset.map((item) => Number(item.equipmentId))
+        selectedKits.push({ id: kitId, name: String(kit.recordset[0].name), equipmentIds })
+        for (const equipmentId of equipmentIds) demand.set(equipmentId, (demand.get(equipmentId) ?? 0) + 1)
+      }
+
+      const equipmentIds = [...demand.keys()].sort((a, b) => a - b)
+      const stockRequest = new sql.Request(transaction)
+      equipmentIds.forEach((id, index) => stockRequest.input(`equipmentId${index}`, sql.Int, id))
+      const stock = await stockRequest.query(`SELECT e.id, e.name, e.quantity, (SELECT COUNT(*) FROM borrow_records br WITH (UPDLOCK, HOLDLOCK) WHERE br.equipment_id=e.id AND br.return_time IS NULL) AS activeBorrowCount FROM equipment e WITH (UPDLOCK, HOLDLOCK, ROWLOCK) WHERE e.id IN (${equipmentIds.map((_, index) => `@equipmentId${index}`).join(',')}) ORDER BY e.id`)
+      if (stock.recordset.length !== equipmentIds.length) { await transaction.rollback(); return json({ message: '部分器材不存在，请刷新后重试' }, 404) }
+      for (const item of stock.recordset) {
+        const requested = demand.get(Number(item.id)) ?? 0
+        const available = Number(item.quantity) - Number(item.activeBorrowCount)
+        if (available < requested) { await transaction.rollback(); return json({ message: `${item.name} 库存不足：需要 ${requested} 件，目前可借 ${Math.max(0, available)} 件` }, 409) }
+      }
+
+      for (const kit of selectedKits) {
+        const kitRecord = await new sql.Request(transaction).input('kitId', sql.Int, kit.id).input('memberId', sql.Int, body.memberId).query('INSERT INTO kit_borrow_records (kit_id, member_id, borrow_time) OUTPUT INSERTED.id VALUES (@kitId, @memberId, SYSUTCDATETIME())')
+        for (const equipmentId of kit.equipmentIds) await new sql.Request(transaction).input('equipmentId', sql.Int, equipmentId).input('memberId', sql.Int, body.memberId).input('kitBorrowRecordId', sql.Int, kitRecord.recordset[0].id).query('INSERT INTO borrow_records (equipment_id, member_id, borrow_time, kit_borrow_record_id) VALUES (@equipmentId, @memberId, SYSUTCDATETIME(), @kitBorrowRecordId)')
+      }
+      for (const item of items) for (let index = 0; index < item.quantity; index += 1) await new sql.Request(transaction).input('equipmentId', sql.Int, item.equipmentId).input('memberId', sql.Int, body.memberId).query('INSERT INTO borrow_records (equipment_id, member_id, borrow_time) VALUES (@equipmentId, @memberId, SYSUTCDATETIME())')
+      for (const item of stock.recordset) {
+        const requested = demand.get(Number(item.id)) ?? 0
+        const status = Number(item.activeBorrowCount) + requested >= Number(item.quantity) ? 'borrowed' : 'available'
+        await new sql.Request(transaction).input('equipmentId', sql.Int, item.id).input('status', sql.VarChar(20), status).query('UPDATE equipment SET status=@status WHERE id=@equipmentId')
+      }
+      await transaction.commit()
+      return json({ ok: true, borrowedEquipmentCount: items.reduce((sum, item) => sum + item.quantity, 0), borrowedKitCount: selectedKits.length }, 201)
+    } catch (error) { await transaction.rollback(); throw error }
+  } catch (error) { return serverError(context, error) }
+} })
 
 app.http('borrow', { methods: ['POST'], authLevel: 'anonymous', route: 'borrow', handler: async (request, context) => { try { const { equipmentId, memberId } = await request.json() as { equipmentId?: number; memberId?: number }; if (!Number.isInteger(equipmentId) || !Number.isInteger(memberId)) return badRequest('equipmentId 和 memberId 必须是整数'); const db = await getPool(); const transaction = new sql.Transaction(db); await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE); try { const member = await new sql.Request(transaction).input('memberId', sql.Int, memberId).query('SELECT id FROM members WHERE id=@memberId'); if (!member.recordset[0]) { await transaction.rollback(); return json({ message: '成员不存在' }, 404) } const stock = await new sql.Request(transaction).input('equipmentId', sql.Int, equipmentId).query('SELECT e.quantity, (SELECT COUNT(*) FROM borrow_records br WITH (UPDLOCK, HOLDLOCK) WHERE br.equipment_id=e.id AND br.return_time IS NULL) AS activeBorrowCount FROM equipment e WITH (UPDLOCK, HOLDLOCK, ROWLOCK) WHERE e.id=@equipmentId'); if (!stock.recordset[0] || stock.recordset[0].activeBorrowCount >= stock.recordset[0].quantity) { await transaction.rollback(); return json({ message: '器材不存在或库存已经全部借出' }, 409) } const record = await new sql.Request(transaction).input('equipmentId', sql.Int, equipmentId).input('memberId', sql.Int, memberId).query('INSERT INTO borrow_records (equipment_id, member_id, borrow_time) OUTPUT INSERTED.id, INSERTED.borrow_time AS borrowTime VALUES (@equipmentId, @memberId, SYSUTCDATETIME())'); await new sql.Request(transaction).input('equipmentId', sql.Int, equipmentId).input('status', sql.VarChar(20), stock.recordset[0].activeBorrowCount + 1 >= stock.recordset[0].quantity ? 'borrowed' : 'available').query('UPDATE equipment SET status=@status WHERE id=@equipmentId'); await transaction.commit(); return json(record.recordset[0], 201) } catch (error) { await transaction.rollback(); throw error } } catch (error) { return serverError(context, error) } } })
 
