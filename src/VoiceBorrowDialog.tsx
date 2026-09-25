@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import type { AudioConfig, SpeechRecognizer } from 'microsoft-cognitiveservices-speech-sdk'
 import { borrowBatch, getSpeechToken, interpretBorrowCommand } from './api'
 import type { BatchBorrowResult, BorrowCommandResult, Member } from './types'
 
@@ -19,19 +20,43 @@ export default function VoiceBorrowDialog({ currentUser, onClose, onBorrowed }: 
   const [borrowing, setBorrowing] = useState(false)
   const [listening, setListening] = useState(false)
   const [error, setError] = useState('')
-  const recognizerRef = useRef<{ close: () => void } | null>(null)
-  const audioConfigRef = useRef<{ close: () => void } | null>(null)
+  const recognizerRef = useRef<SpeechRecognizer | null>(null)
+  const audioConfigRef = useRef<AudioConfig | null>(null)
+  const finalTranscriptRef = useRef('')
+  const partialTranscriptRef = useRef('')
 
-  const stopListening = () => {
-    recognizerRef.current?.close()
-    audioConfigRef.current?.close()
+  const closeSpeechResources = () => {
+    const recognizer = recognizerRef.current
+    const audioConfig = audioConfigRef.current
     recognizerRef.current = null
     audioConfigRef.current = null
+    recognizer?.close()
+    audioConfig?.close()
     setListening(false)
   }
+
+  const stopListening = (generateList = false) => {
+    const recognizer = recognizerRef.current
+    if (!recognizer) { closeSpeechResources(); return }
+    recognizer.stopContinuousRecognitionAsync(async () => {
+      const transcript = (finalTranscriptRef.current || partialTranscriptRef.current).trim()
+      closeSpeechResources()
+      if (!generateList) return
+      if (!transcript) { setError('没有听清，请靠近麦克风重新说一次'); return }
+      setCommand(transcript)
+      await interpret(transcript)
+    }, () => {
+      closeSpeechResources()
+      setError('停止语音识别失败，可以先使用文字输入')
+    })
+  }
   useEffect(() => () => {
-    recognizerRef.current?.close()
-    audioConfigRef.current?.close()
+    const recognizer = recognizerRef.current
+    const audioConfig = audioConfigRef.current
+    recognizerRef.current = null
+    audioConfigRef.current = null
+    recognizer?.stopContinuousRecognitionAsync(() => recognizer.close(), () => recognizer.close())
+    audioConfig?.close()
   }, [])
 
   async function interpret(text = command) {
@@ -52,9 +77,12 @@ export default function VoiceBorrowDialog({ currentUser, onClose, onBorrowed }: 
   async function submit(event: FormEvent) { event.preventDefault(); await interpret() }
 
   async function listen() {
-    if (listening) { stopListening(); return }
+    if (listening) { stopListening(true); return }
     setError('')
     setResult(null)
+    setCommand('')
+    finalTranscriptRef.current = ''
+    partialTranscriptRef.current = ''
     try {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error('当前浏览器不支持麦克风，请改用文字输入')
       const [{ token, region }, SpeechSDK] = await Promise.all([getSpeechToken(), import('microsoft-cognitiveservices-speech-sdk')])
@@ -64,19 +92,29 @@ export default function VoiceBorrowDialog({ currentUser, onClose, onBorrowed }: 
       const recognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig)
       recognizerRef.current = recognizer
       audioConfigRef.current = audioConfig
-      setListening(true)
-      recognizer.recognizeOnceAsync(async (speechResult) => {
-        recognizer.close(); audioConfig.close(); recognizerRef.current = null; audioConfigRef.current = null; setListening(false)
-        if (speechResult.reason !== SpeechSDK.ResultReason.RecognizedSpeech || !speechResult.text.trim()) { setError('没有听清，请靠近麦克风重新说一次'); return }
-        const transcript = speechResult.text.trim().replace(/[。.]$/, '')
-        setCommand(transcript)
-        await interpret(transcript)
+      recognizer.recognizing = (_sender, event) => {
+        partialTranscriptRef.current = event.result.text.trim()
+        setCommand([finalTranscriptRef.current, partialTranscriptRef.current].filter(Boolean).join(' '))
+      }
+      recognizer.recognized = (_sender, event) => {
+        if (event.result.reason !== SpeechSDK.ResultReason.RecognizedSpeech || !event.result.text.trim()) return
+        const segment = event.result.text.trim().replace(/[。.]$/, '')
+        finalTranscriptRef.current = [finalTranscriptRef.current, segment].filter(Boolean).join(' ')
+        partialTranscriptRef.current = ''
+        setCommand(finalTranscriptRef.current)
+      }
+      recognizer.canceled = (_sender, event) => {
+        closeSpeechResources()
+        setError(event.errorDetails?.includes('Permission') ? '请允许浏览器使用麦克风' : '语音识别失败，可以先使用文字输入')
+      }
+      recognizer.startContinuousRecognitionAsync(() => {
+        setListening(true)
       }, (reason) => {
-        recognizer.close(); audioConfig.close(); recognizerRef.current = null; audioConfigRef.current = null; setListening(false)
+        closeSpeechResources()
         setError(typeof reason === 'string' && reason.includes('Permission') ? '请允许浏览器使用麦克风' : '语音识别失败，可以先使用文字输入')
       })
     } catch (reason) {
-      stopListening()
+      closeSpeechResources()
       setError(reason instanceof Error ? reason.message : '无法启动语音识别')
     }
   }
@@ -107,11 +145,11 @@ export default function VoiceBorrowDialog({ currentUser, onClose, onBorrowed }: 
       <form className="voice-command" onSubmit={submit}>
         <textarea value={command} maxLength={300} rows={3} placeholder="例如：我要一台 A7 IV、一个 24-70 和两块电池" onChange={(event) => { setCommand(event.target.value); setResult(null); if (error) setError('') }} />
         <div className="voice-command-actions">
-          <button type="button" className={`listen-button${listening ? ' listening' : ''}`} onClick={listen} disabled={interpreting || borrowing}><MicrophoneIcon /><span>{listening ? '停止聆听' : '语音输入'}</span></button>
+          <button type="button" className={`listen-button${listening ? ' listening' : ''}`} onClick={listen} disabled={interpreting || borrowing}><MicrophoneIcon /><span>{listening ? '停止并生成' : '语音输入'}</span></button>
           <button type="submit" className="interpret-button" disabled={interpreting || borrowing || !command.trim()}>{interpreting ? '正在理解…' : result ? '重新识别' : '生成清单'}</button>
         </div>
       </form>
-      {listening && <div className="listening-state" role="status"><span /><span /><span /><b>正在聆听，说完后稍等片刻</b></div>}
+      {listening && <div className="listening-state" role="status"><span /><span /><span /><b>正在持续聆听，再次点击按钮结束</b></div>}
       {result && <div className="borrow-command-result" aria-live="polite">
         <div className="result-heading"><h3>借用清单</h3><span>{result.kits.length} 个 Kit · {result.equipment.reduce((sum, item) => sum + item.quantity, 0)} 件单件器材</span></div>
         <div className="result-items">
