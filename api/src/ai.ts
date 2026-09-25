@@ -1,3 +1,5 @@
+import { matchBorrowCommandLocally } from './localBorrowMatcher.js'
+
 type EquipmentInventory = {
   id: number
   name: string
@@ -154,8 +156,27 @@ const parseModelResponse = (data: unknown): Partial<ParsedBorrowCommand> => {
 }
 
 export async function parseBorrowCommand(text: string, equipment: EquipmentInventory[], kits: KitInventory[]): Promise<ParsedBorrowCommand> {
-  const config = aiConfig()
-  const system = `你是摄影器材借用指令解析器。只从提供的库存中选择器材或 Kit，不得编造 ID。理解中文口语、品牌简称、型号写法、阿拉伯数字和中文数量。用户只说类别时：若该类别只有一个合理候选可选择，否则放入 unresolvedItems。默认数量为 1。Kit 始终整套借出，不要把 Kit 展开为单件。只返回 JSON 对象，不要使用 Markdown。格式必须是：{"equipment":[{"equipmentId":1,"quantity":1,"confidence":0.95}],"kits":[{"kitId":1,"confidence":0.95}],"unresolvedItems":["无法确定的原话"]}。没有匹配项时对应数组必须为空。\n\n单件库存：${JSON.stringify(equipment)}\nKit 库存：${JSON.stringify(kits)}`
+  const localMatch = matchBorrowCommandLocally(text, equipment, kits)
+  const hasLocalMatch = localMatch.equipment.length > 0 || localMatch.kits.length > 0
+  const localHints = { equipment: localMatch.equipment.map(({ equipmentId, quantity }) => ({ equipmentId, quantity })), kits: localMatch.kits.map(({ kitId }) => ({ kitId })) }
+  let parsed: Partial<ParsedBorrowCommand>
+
+  try {
+    const config = aiConfig()
+    const system = `你是摄影器材借用指令解析器。请遵守以下规则：
+1. 只从提供的库存中选择器材或 Kit，不得编造 ID。
+2. 尽可能提取每一个能独立确定的项目；某一项含糊或句子末尾没说完时，仍必须返回其他已确定项目，只把含糊片段放入 unresolvedItems。
+3. 忽略“呃、嗯、然后、还有、再拿、帮我拿、拿上”等口语填充或连接词。连续出现的型号和类别也要分别识别。
+4. 匹配时忽略大小写、空格、连字符和品牌省略，例如“1628”可匹配“16-28”，“A7M5”可匹配完整型号。监视器、显示器视为监看器；内存卡视为存储卡。
+5. 用户明确说出型号时优先按型号选择。只说类别时，若该类别只有一个合理候选则选择，否则放入 unresolvedItems。
+6. 只有明确说“套装、Kit、整套”或完整 Kit 名称时才选择 Kit；列举单件器材时不要擅自替换成 Kit。Kit 始终整套借出，不展开为单件。
+7. 库存中不存在的器材不得用相似物品替代，只把原话放入 unresolvedItems。默认数量为 1。
+8. 本地匹配提示是程序根据名称得到的高可信候选，应保留；但仍需结合用户原话判断数量，且不得因此忽略其他项目。
+9. 只返回一个完整 JSON 对象，不要解释，不要使用 Markdown。格式必须是：{"equipment":[{"equipmentId":1,"quantity":1,"confidence":0.95}],"kits":[{"kitId":1,"confidence":0.95}],"unresolvedItems":["无法确定的原话"]}。没有匹配项时对应数组必须为空。
+
+本地匹配提示：${JSON.stringify(localHints)}
+单件库存：${JSON.stringify(equipment)}
+Kit 库存：${JSON.stringify(kits)}`
   const commonBody = {
     messages: [
       { role: 'system', content: system },
@@ -185,22 +206,30 @@ export async function parseBorrowCommand(text: string, equipment: EquipmentInven
   }
   if (lastError || !data) throw lastError ?? new Error('AI_EMPTY_RESPONSE')
 
-  let parsed: Partial<ParsedBorrowCommand>
-  try {
-    parsed = parseModelResponse(data)
+    try {
+      parsed = parseModelResponse(data)
+    } catch (error) {
+      if (!(error instanceof Error) || !['AI_EMPTY_RESPONSE', 'AI_INVALID_RESPONSE'].includes(error.message)) throw error
+      // 模型偶尔会截断 JSON；自动再生成一次，不让用户手动重复提交。
+      const retryData = await callModel({
+        ...commonBody,
+        messages: [...commonBody.messages, { role: 'user', content: '请重新生成，并且只输出一个完整、有效的 JSON 对象。即使部分内容不确定，也必须保留所有已经确定的项目。' }],
+        response_format: { type: 'json_object' },
+      }, config)
+      parsed = parseModelResponse(retryData)
+    }
   } catch (error) {
-    if (!(error instanceof Error) || !['AI_EMPTY_RESPONSE', 'AI_INVALID_RESPONSE'].includes(error.message)) throw error
-    // 模型偶尔会截断 JSON；自动再生成一次，不让用户手动重复提交。
-    const retryData = await callModel({
-      ...commonBody,
-      messages: [...commonBody.messages, { role: 'user', content: '请重新生成，并且只输出一个完整、有效的 JSON 对象。' }],
-      response_format: { type: 'json_object' },
-    }, config)
-    parsed = parseModelResponse(retryData)
+    if (!hasLocalMatch) throw error
+    // 模型服务失败时仍保留本地已经确定的项目，避免整条口述结果丢失。
+    return {
+      equipment: localMatch.equipment,
+      kits: localMatch.kits,
+      unresolvedItems: ['部分口述内容未能由 AI 确认，请核对当前清单'],
+    }
   }
   const equipmentIds = new Set(equipment.map((item) => item.id))
   const kitIds = new Set(kits.map((kit) => kit.id))
-  const merged = new Map<number, { equipmentId: number; quantity: number; confidence: number }>()
+  const merged = new Map(localMatch.equipment.map((item) => [item.equipmentId, item]))
   for (const item of Array.isArray(parsed.equipment) ? parsed.equipment : []) {
     const equipmentId = Number(item.equipmentId)
     const quantity = Number(item.quantity)
@@ -209,11 +238,12 @@ export async function parseBorrowCommand(text: string, equipment: EquipmentInven
     const existing = merged.get(equipmentId)
     merged.set(equipmentId, {
       equipmentId,
-      quantity: Math.min(20, (existing?.quantity ?? 0) + quantity),
+      // 本地与 AI 同时命中同一项目时取较大数量，避免重复相加。
+      quantity: Math.max(existing?.quantity ?? 0, quantity),
       confidence: Math.max(existing?.confidence ?? 0, Number.isFinite(confidence) ? Math.min(1, Math.max(0, confidence)) : 0.5),
     })
   }
-  const uniqueKits = new Map<number, { kitId: number; confidence: number }>()
+  const uniqueKits = new Map(localMatch.kits.map((kit) => [kit.kitId, kit]))
   for (const kit of Array.isArray(parsed.kits) ? parsed.kits : []) {
     const kitId = Number(kit.kitId)
     const confidence = Number(kit.confidence)
