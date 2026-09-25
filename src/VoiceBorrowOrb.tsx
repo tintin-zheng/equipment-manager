@@ -10,12 +10,8 @@ type Props = {
 
 type VoicePhase = 'idle' | 'starting' | 'listening' | 'stopping'
 
-function MicrophoneIcon() {
-  return <svg className="voice-orb-microphone" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="3" width="8" height="12" rx="4" /><path d="M5.5 11.5v.5a6.5 6.5 0 0 0 13 0v-.5M12 18.5V22M8.5 22h7" /></svg>
-}
-
-function VoiceWave() {
-  return <span className="voice-orb-wave" aria-hidden="true">{Array.from({ length: 7 }, (_, index) => <i key={index} />)}</span>
+function VoiceMark() {
+  return <span className="voice-orb-mark" aria-hidden="true"><i /><i /></span>
 }
 
 export default function VoiceBorrowOrb({ processing, onTranscript, onError }: Props) {
@@ -128,7 +124,7 @@ export default function VoiceBorrowOrb({ processing, onTranscript, onError }: Pr
 
   return <button type="button" className={`voice-orb ${activePhase}`} onClick={listening ? stopListening : startListening} disabled={disabled} aria-label={label} aria-pressed={listening}>
     <span className="voice-orb-glow" aria-hidden="true" />
-    <span className="voice-orb-core">{phase === 'idle' && !processing ? <MicrophoneIcon /> : <VoiceWave />}</span>
+    <span className="voice-orb-core"><VoiceMark /></span>
     <span className="voice-orb-status" role="status">{label}</span>
   </button>
 }
