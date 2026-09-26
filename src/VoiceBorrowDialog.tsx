@@ -56,8 +56,8 @@ export default function VoiceBorrowDialog({ currentUser, initialCommand, initial
 
   return <div className="dialog-backdrop voice-dialog-backdrop" onMouseDown={onClose}>
     <section className="voice-borrow-dialog" role="dialog" aria-modal="true" aria-labelledby="voice-borrow-title" onMouseDown={(event) => event.stopPropagation()}>
-      <div className="form-title"><div><p className="voice-eyebrow">AI ASSISTED</p><h2 id="voice-borrow-title">借用清单</h2></div><button type="button" onClick={onClose} aria-label="关闭">×</button></div>
-      <p className="voice-intro">已根据你的语音生成清单。可以修改原话重新识别，也可以直接调整下面的器材。</p>
+      <div className="form-title"><h2 id="voice-borrow-title">借用清单</h2><button type="button" onClick={onClose} aria-label="关闭">×</button></div>
+      <p className="voice-intro">已根据你的语音生成清单。可以修改以重新识别。</p>
       <form className="voice-command" onSubmit={submit}>
         <textarea value={command} maxLength={300} rows={3} placeholder="例如：我要一台 A7 IV、一个 24-70 和两块电池" onChange={(event) => { setCommand(event.target.value); setResult(null); if (error) setError('') }} />
         <div className="voice-command-actions"><button type="submit" className="interpret-button" disabled={interpreting || borrowing || !command.trim()}>{interpreting ? '正在理解…' : '重新识别'}</button></div>
