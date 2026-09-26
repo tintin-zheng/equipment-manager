@@ -91,6 +91,22 @@ const quantityNear = (text: string, index: number, aliasLength: number) => {
   return parseQuantity(after?.[1])
 }
 
+const fuzzyAliasIndex = (text: string, alias: string, knownAliases: Map<string, number[]>) => {
+  // 只纠正含字母或数字、且长度相同并仅差一个字符的型号，避免普通中文词被过度猜测。
+  if (alias.length < 3 || alias.length > 12 || !/[a-z0-9]/.test(alias) || text.length < alias.length) return -1
+  for (let index = 0; index <= text.length - alias.length; index += 1) {
+    const candidate = text.slice(index, index + alias.length)
+    if (knownAliases.has(candidate)) continue
+    let differences = 0
+    for (let offset = 0; offset < alias.length; offset += 1) {
+      if (candidate[offset] !== alias[offset]) differences += 1
+      if (differences > 1) break
+    }
+    if (differences === 1) return index
+  }
+  return -1
+}
+
 export function matchBorrowCommandLocally(text: string, equipment: LocalEquipmentInventory[], kits: LocalKitInventory[]): LocalBorrowMatch {
   const normalizedText = normalizeBorrowText(text)
   const aliasOwners = new Map<string, number[]>()
@@ -121,5 +137,18 @@ export function matchBorrowCommandLocally(text: string, equipment: LocalEquipmen
     return [{ equipmentId: item.id, quantity: quantityNear(normalizedText, index, alias.length), confidence: alias === normalizeBorrowText(item.name) ? 1 : 0.94 }]
   })
 
-  return { equipment: matchedEquipment, kits: matchedKits }
+  const matchedIds = new Set(matchedEquipment.map((item) => item.equipmentId))
+  const uncertainEquipment = equipment.flatMap((item) => {
+    if (matchedIds.has(item.id)) return []
+    const aliases = (aliasesByEquipment.get(item.id) ?? [])
+      .filter((alias) => aliasOwners.get(alias)?.length === 1)
+      .sort((left, right) => right.length - left.length)
+    for (const alias of aliases) {
+      const index = fuzzyAliasIndex(normalizedText, alias, aliasOwners)
+      if (index >= 0) return [{ equipmentId: item.id, quantity: quantityNear(normalizedText, index, alias.length), confidence: 0.62 }]
+    }
+    return []
+  })
+
+  return { equipment: [...matchedEquipment, ...uncertainEquipment], kits: matchedKits }
 }

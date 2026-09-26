@@ -172,7 +172,8 @@ export async function parseBorrowCommand(text: string, equipment: EquipmentInven
 6. 只有明确说“套装、Kit、整套”或完整 Kit 名称时才选择 Kit；列举单件器材时不要擅自替换成 Kit。Kit 始终整套借出，不展开为单件。
 7. 用户说法与库存不完全一致时，应优先选择名称、类别、品牌、型号、焦段、容量或读音最接近的库存器材。只有完全没有合理候选时才使用 unresolvedItems。默认数量为 1。
 8. 本地匹配提示是程序根据名称得到的高可信候选，应保留；但仍需结合用户原话判断数量，且不得因此忽略其他项目。
-9. 只返回一个完整 JSON 对象，不要解释，不要使用 Markdown。格式必须是：{"equipment":[{"equipmentId":1,"quantity":1,"confidence":0.95}],"kits":[{"kitId":1,"confidence":0.95}],"unresolvedItems":["无法确定的原话"]}。没有匹配项时对应数组必须为空。
+9. confidence 必须真实表达确定程度：明确或高度可信的匹配使用 0.8–1；依靠纠错、近似型号或模糊描述猜出的候选使用 0.4–0.79，前端会把它放进“需要你确认”区域。例如用户说“CFB 卡”，库存没有 CFB 卡但有 CFA 卡时，必须返回 CFA 卡的 ID，并给出低于 0.8 的 confidence，不能只放入 unresolvedItems。
+10. 只返回一个完整 JSON 对象，不要解释，不要使用 Markdown。格式必须是：{"equipment":[{"equipmentId":1,"quantity":1,"confidence":0.95}],"kits":[{"kitId":1,"confidence":0.95}],"unresolvedItems":["完全找不到合理候选的原话"]}。没有匹配项时对应数组必须为空。
 
 本地匹配提示：${JSON.stringify(localHints)}
 单件库存：${JSON.stringify(equipment)}
@@ -236,11 +237,13 @@ Kit 库存：${JSON.stringify(kits)}`
     const confidence = Number(item.confidence)
     if (!equipmentIds.has(equipmentId) || !Number.isInteger(quantity) || quantity < 1 || quantity > 20) continue
     const existing = merged.get(equipmentId)
+    const modelConfidence = Number.isFinite(confidence) ? Math.min(1, Math.max(0, confidence)) : 0.5
     merged.set(equipmentId, {
       equipmentId,
       // 本地与 AI 同时命中同一项目时取较大数量，避免重复相加。
       quantity: Math.max(existing?.quantity ?? 0, quantity),
-      confidence: Math.max(existing?.confidence ?? 0, Number.isFinite(confidence) ? Math.min(1, Math.max(0, confidence)) : 0.5),
+      // 本地已判定为模糊型号的候选必须由用户确认，不能被模型的过高自信直接升级。
+      confidence: existing && existing.confidence < 0.8 ? Math.min(0.79, Math.max(existing.confidence, modelConfidence)) : Math.max(existing?.confidence ?? 0, modelConfidence),
     })
   }
   const uniqueKits = new Map(localMatch.kits.map((kit) => [kit.kitId, kit]))
